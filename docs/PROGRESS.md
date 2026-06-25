@@ -56,6 +56,7 @@
 - [x] Run `./scripts/check.sh` from this source tree after the final version/changelog updates.
 - [x] Perform clean archive extraction verification and run the full check from the extracted archive.
 - [x] Publish or hand off the archive and SHA-256 checksum only after release approval.
+- [x] Create private GitHub repository `omensealed/omen-agentkit` and publish release `v0.3.0` with verified tarball and checksum assets.
 
 ## External acceptance
 

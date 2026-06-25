@@ -398,3 +398,14 @@ This is the starter kit’s durable engineering journal. Add a dated entry after
 - Security/data/performance/UX implications: This is a publication hygiene change only. No GitHub repository, release, remote push, package publication, deployment, Codex login, OpenAI request, package installation, `sudo`, or credential inspection was performed.
 - Unresolved problems: GitHub publication is blocked until the human refreshes GitHub CLI authentication for `omensealed`.
 - Exact next step: After `gh auth refresh -h github.com` succeeds for `omensealed`, commit the staged release source, create `omensealed/omen-agentkit`, push `main`, and publish the `v0.3.0` release with the tarball and checksum.
+
+## 2026-06-25T05:02:38Z — GitHub release publication
+
+- Objective/phase: Publish the approved 0.3.0 release to GitHub.
+- Files/subsystems changed: `docs/PROGRESS.md` and this implementation note.
+- Behavior/design decisions: Created `omensealed/omen-agentkit` as a private GitHub repository to avoid accidental public publication. Published GitHub release `v0.3.0` with the verified source archive and SHA-256 sidecar. The release tag targets the checked `Release 0.3.0` source commit.
+- Commands and tests run: `gh auth refresh -h github.com`; `gh auth status`; `git commit -m "Release 0.3.0"`; `gh repo view omensealed/omen-agentkit`; `gh repo create omensealed/omen-agentkit --private --source . --remote origin --push --description "CLI AI Agent Starter Kit - Codex Edition"`; `gh release create v0.3.0 ...`; `gh release view v0.3.0 --repo omensealed/omen-agentkit --json tagName,name,url,isDraft,isPrerelease,assets`.
+- Results: GitHub CLI authentication for `omensealed` was refreshed through the official device flow. The private repository was created at `https://github.com/omensealed/omen-agentkit`, `main` was pushed, and release `v0.3.0` was published at `https://github.com/omensealed/omen-agentkit/releases/tag/v0.3.0`. Release verification reported both assets uploaded. The tarball asset digest is `sha256:ebc490a87d7c4fde98ca84dfeca551836c40b16814541bef7411b9bb6505b868`.
+- Security/data/performance/UX implications: GitHub publication was explicitly requested by the human. No package-manager installation, `sudo`, deployment, package registry publication, Codex login, OpenAI request, or credential inspection was performed. GitHub CLI printed only a masked token in status output; no token value was copied or persisted by this project.
+- Unresolved problems: Live Codex external acceptance remains pending: a human launches Codex from a generated project and carries the first real implementation phase through `docs/11-IMPLEMENTATION-NOTES.md`.
+- Exact next step: Push this documentation-only publication record to `main`.
