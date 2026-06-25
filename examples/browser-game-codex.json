@@ -1,0 +1,50 @@
+{
+  "project_name": "Browser Roguelike",
+  "project_slug": "browser-roguelike",
+  "project_path": "./browser-roguelike",
+  "project_mode": "new",
+  "project_stage": "idea",
+  "project_type": "game",
+  "description": "A vanilla JavaScript browser roguelike with deterministic turns, progression, save data, and keyboard/touch controls.",
+  "goals": [
+    "Create one complete playable run loop",
+    "Separate deterministic game state from rendering and input",
+    "Test generation, combat, inventory, saving, and progression"
+  ],
+  "non_goals": [
+    "Heavy game engine",
+    "Online multiplayer in the first release"
+  ],
+  "target_users": "Desktop and mobile browser players",
+  "target_platforms": [
+    "browser",
+    "cachyos-linux"
+  ],
+  "packaging_targets": [
+    "static web build"
+  ],
+  "stack_strategy": "manual",
+  "languages": [
+    "javascript"
+  ],
+  "database": "none",
+  "database_notes": "Use a small browser-native save format initially; evaluate IndexedDB only if localStorage is insufficient. Avoid SQLite/WASM unless Phase 0 proves it is necessary.",
+  "network_access": false,
+  "user_accounts": false,
+  "handles_personal_data": false,
+  "handles_payments": false,
+  "primary_agent": "codex",
+  "setup_agent_now": false,
+  "git_enabled": true,
+  "github_actions": false,
+  "github_remote": "none",
+  "default_branch": "main",
+  "license_name": "MIT",
+  "tests": [
+    "unit",
+    "integration",
+    "end-to-end",
+    "regression"
+  ],
+  "browser_tests": true
+}

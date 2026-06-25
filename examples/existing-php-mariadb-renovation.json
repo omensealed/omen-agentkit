@@ -1,0 +1,53 @@
+{
+  "project_name": "Legacy Site Renovation",
+  "project_slug": "legacy-site-renovation",
+  "project_path": "./existing-site",
+  "project_mode": "existing",
+  "project_stage": "renovation",
+  "project_type": "web",
+  "description": "Stabilize and incrementally renovate an existing vanilla PHP and JavaScript site without breaking data or behavior.",
+  "goals": [
+    "Inventory the live architecture and obsolete paths",
+    "Create characterization and database integration tests",
+    "Improve security and maintainability through reversible phases"
+  ],
+  "non_goals": [
+    "Framework rewrite before characterization tests",
+    "Production migration without backups and rollback"
+  ],
+  "target_users": "Existing site visitors and staff",
+  "target_platforms": [
+    "browser",
+    "server",
+    "cachyos-linux"
+  ],
+  "packaging_targets": [
+    "documented server deployment"
+  ],
+  "stack_strategy": "manual",
+  "languages": [
+    "php",
+    "javascript"
+  ],
+  "database": "mariadb",
+  "database_notes": "Use a dedicated local development database and least-privilege test account; never use production credentials.",
+  "network_access": true,
+  "user_accounts": true,
+  "handles_personal_data": true,
+  "handles_payments": false,
+  "primary_agent": "codex",
+  "setup_agent_now": false,
+  "git_enabled": true,
+  "github_actions": false,
+  "github_remote": "none",
+  "default_branch": "main",
+  "license_name": "Undecided",
+  "tests": [
+    "unit",
+    "integration",
+    "regression",
+    "security",
+    "end-to-end"
+  ],
+  "browser_tests": true
+}
