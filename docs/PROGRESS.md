@@ -7,7 +7,7 @@
 - [x] Strengthen generated prompts so sandbox failures block instead of silently falling back to host checks.
 - [x] Run final full source check after version bump.
 - [x] Build and verify patch release archive/checksum locally.
-- [ ] Tag and publish patch release if final archive check passes.
+- [x] Tag and publish patch release if final archive check passes.
 
 ## 0.4.2 patch release prep
 
