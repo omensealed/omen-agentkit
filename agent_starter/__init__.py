@@ -3,4 +3,4 @@
 from .models import AdvisorRecommendation, ProjectConfig
 
 __all__ = ["AdvisorRecommendation", "ProjectConfig"]
-__version__ = "0.3.0"
+__version__ = "0.4.0"

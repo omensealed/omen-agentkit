@@ -1,5 +1,12 @@
 # Progress
 
+## 0.4.0 local release prep
+
+- [x] Add repo-local `$agentkit` skill workflow and optional rootless Podman sandbox support.
+- [x] Update source docs, answer-file reference, curated examples, tests, changelog, and implementation notes.
+- [x] Run final full source check after version bump.
+- [ ] Build and verify release archive/checksum if publication or handoff is requested.
+
 ## 0.2.0 Codex-only release
 
 - [x] Remove alternate-agent adapters, choices, flags, examples, launcher paths, and generated compatibility files.

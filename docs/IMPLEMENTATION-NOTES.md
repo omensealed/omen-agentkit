@@ -443,3 +443,13 @@ This is the starter kit’s durable engineering journal. Add a dated entry after
 - Results: Focused CLI/model/generator/sandbox suite passed 44 tests. Wizard suite passed 6 tests after realigning answer-list fixtures for the new sandbox prompts. Full source check passed with 85 tests, shell syntax checks, source-tree CLI version check, generation smoke test creating 58 files, generated project `scripts/check.sh`, and user-local install/uninstall smoke test.
 - Security/data/performance/UX implications: Documentation-only and example-data update. No Podman build/run, Codex login, package installation, `sudo`, network call, GitHub action, deployment, rsync, credential inspection, host Codex auth copy, or session import was performed.
 - Exact next step: Run the full source check and commit this documentation/example follow-up if clean.
+
+## 2026-06-27T21:02:06Z — 0.4.0 local release prep
+
+- Objective/phase: Prepare the completed `$agentkit` skill workflow and rootless Podman sandbox support as local version `0.4.0`.
+- Files/subsystems changed: `VERSION`, `agent_starter/__init__.py`, `agent_starter/models.py`, `pyproject.toml`, `tests/test_cli.py`, `CHANGELOG.md`, `docs/PROGRESS.md`, and this note.
+- Behavior/design decisions: Promoted the unreleased `$agentkit` skill and Podman sandbox entries into `CHANGELOG.md` section `0.4.0 — 2026-06-27`. Updated all package/version fields together so generated `ProjectConfig.kit_version`, CLI `--version`, `VERSION`, and `pyproject.toml` agree. Kept the repo-local Agent Kit skill sidecar minimum version at `0.3.0` because the skill workflow remains compatible with that install/update baseline.
+- Commands and tests run: `python3 -m unittest tests.test_release tests.test_cli -v`; `./scripts/check.sh`.
+- Results: Release/CLI focused tests passed 23 tests. Full source check passed with 85 tests, shell syntax checks, source-tree CLI version check reporting `agent-starter 0.4.0`, generation smoke test creating 58 files, generated project `scripts/check.sh`, and user-local install/uninstall smoke test.
+- Security/data/performance/UX implications: Local version/changelog preparation only. No archive build, checksum publication, GitHub push, GitHub release, package publication, deployment, Codex login, OpenAI request, package installation, `sudo`, Podman build/run, rsync, or credential inspection was performed.
+- Exact next step: Run the full source check once more after this note, then commit the 0.4.0 local release prep if clean.
