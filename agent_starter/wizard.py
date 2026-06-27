@@ -372,6 +372,10 @@ def run_wizard(
     config.primary_agent = "codex"
     p.output("This edition creates Codex-only workspaces and uses the official Codex CLI account flow.")
     config.setup_agent_now = not skip_agent_setup and p.confirm("Install or authorize Codex during this wizard when needed?", default=True)
+    config.codex_agentkit_skill = p.confirm(
+        "Install the repo-local `$agentkit` Codex skill so future short requests can be expanded into full Agent Kit prompts from inside Codex?",
+        default=True,
+    )
 
     p.section("Technology stack")
     config.stack_strategy = p.choose(

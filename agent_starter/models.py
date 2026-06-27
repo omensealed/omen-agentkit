@@ -113,6 +113,7 @@ class ProjectConfig:
     setup_agent_now: bool = True
     agent_sandbox: str = "builtin-safe"
     use_ai_advisor: bool = False
+    codex_agentkit_skill: bool = True
 
     git_enabled: bool = True
     github_actions: bool = False

@@ -45,6 +45,7 @@ class WizardHelpersTests(unittest.TestCase):
                 "",
                 "",
                 "",
+                "",
                 "manual",
                 "python",
                 "none",

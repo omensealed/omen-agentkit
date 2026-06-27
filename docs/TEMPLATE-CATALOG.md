@@ -8,6 +8,8 @@
 - `README.md`: beginner-facing project setup, commands, current phase, and workflow.
 - `START_AGENT.sh`: validates basic project files and launches Codex with the prepared prompt.
 - `.codex/config.toml`: conservative workspace sandbox, approval, and web-search defaults.
+- `.agents/skills/agentkit/SKILL.md`: optional concise repo-local Codex skill for `$agentkit` prompt expansion.
+- `.agents/skills/agentkit/agentkit-skill.json`: optional Agent Kit-managed skill version/install metadata.
 - `.agent-starter/project.json`: normalized non-secret project configuration.
 - `.agent-starter/manifest.json`: hashes/modes for generated managed files.
 - `.agent-starter/rsync-excludes`: review-first local/SSH mirror excludes for `agent-starter rsync-plan`.

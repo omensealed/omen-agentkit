@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import tempfile
+import unittest
+from datetime import date
+from pathlib import Path
+from unittest import mock
+
+from agent_starter.generator import generate_project
+from agent_starter.idea_prompts import parse_mode_and_idea, write_idea_prompt
+from agent_starter.models import ProjectConfig
+
+
+class IdeaPromptTests(unittest.TestCase):
+    def make_project(self, root: Path) -> None:
+        config = ProjectConfig(
+            project_name="Idea Prompt Project",
+            project_slug="idea-prompt-project",
+            project_path=str(root),
+            project_type="cli",
+            languages=["python"],
+            database="sqlite",
+            git_enabled=False,
+        )
+        self.assertTrue(generate_project(config).ok)
+
+    def test_mode_and_idea_creates_prompt_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            self.make_project(root)
+            result = write_idea_prompt(
+                start=root,
+                mode="implement",
+                idea="Add SQLite save/load support",
+                today=date(2026, 6, 27),
+            )
+
+            self.assertTrue(result.prompt_path.is_file())
+            self.assertEqual(result.mode, "implement")
+            self.assertEqual(result.idea, "Add SQLite save/load support")
+            self.assertEqual(
+                result.prompt_path.relative_to(root).as_posix(),
+                "docs/agent-prompts/2026-06-27-implement-add-sqlite-save-load-support.md",
+            )
+            text = result.prompt_path.read_text(encoding="utf-8")
+            self.assertIn("Add SQLite save/load support", text)
+            self.assertIn("Implement the smallest coherent change", text)
+            self.assertIn("docs/11-IMPLEMENTATION-NOTES.md", text)
+            self.assertIn("Do not run `sudo`, install packages, create GitHub repositories, push", text)
+
+    def test_from_codex_parses_known_mode(self) -> None:
+        mode, idea = parse_mode_and_idea(arguments="implement Add thing")
+        self.assertEqual(mode, "implement")
+        self.assertEqual(idea, "Add thing")
+
+    def test_unknown_first_token_defaults_to_implement(self) -> None:
+        mode, idea = parse_mode_and_idea(arguments="ship Add thing")
+        self.assertEqual(mode, "implement")
+        self.assertEqual(idea, "ship Add thing")
+
+    def test_empty_idea_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_mode_and_idea(mode="implement", idea="")
+        with self.assertRaises(ValueError):
+            parse_mode_and_idea(arguments="implement")
+
+    def test_prompt_generation_works_without_codex_installed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            self.make_project(root)
+            with mock.patch("shutil.which", return_value=None):
+                result = write_idea_prompt(start=root, mode="docs", idea="Refresh README")
+            self.assertTrue(result.prompt_path.is_file())
+            self.assertIn("Update documentation accurately", result.body)
+
+    def test_cli_json_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            self.make_project(root)
+            completed = subprocess.run(
+                [
+                    "./agent-starter",
+                    "idea-prompt",
+                    "--project",
+                    str(root),
+                    "--from-codex",
+                    "--arguments",
+                    "fix The generated check script fails",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            data = json.loads(completed.stdout)
+            self.assertEqual(data["mode"], "fix")
+            self.assertEqual(data["idea"], "The generated check script fails")
+            self.assertTrue(Path(data["prompt_path"]).is_file())
+
+    def test_no_shell_true_for_user_idea_text(self) -> None:
+        for path in (Path("agent_starter/idea_prompts.py"), Path("agent_starter/cli.py")):
+            self.assertNotIn("shell=True", path.read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    unittest.main()

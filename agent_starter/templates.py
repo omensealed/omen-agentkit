@@ -96,6 +96,28 @@ def command_section(commands: Iterable[str], *, placeholder: str) -> str:
     return "```bash\n" + "\n".join(values) + "\n```"
 
 
+def agentkit_skill_note(config: ProjectConfig) -> str:
+    if not config.codex_agentkit_skill:
+        return ""
+    return clean(
+        """
+        ## Repo-local Agent Kit skill
+
+        When Codex is already open in this repository, future short requests can use the repo-local `$agentkit`
+        skill. It is a Codex skill invocation, not a custom slash command:
+
+        ```text
+        $agentkit implement Add your feature idea here
+        $agentkit fix Describe the bug here
+        $agentkit plan Describe the project change here
+        ```
+
+        The skill calls `agent-starter idea-prompt` locally, reads the generated prompt under
+        `docs/agent-prompts/`, and follows that prompt as the implementation brief.
+        """
+    )
+
+
 def agents_md(config: ProjectConfig) -> str:
     setup = effective_commands(config, "setup")
     build = effective_commands(config, "build")
@@ -186,6 +208,8 @@ def agents_md(config: ProjectConfig) -> str:
 
         The stable human/CI entry point is `./scripts/check.sh`. Keep it working as commands evolve.
 
+        {agentkit_skill_note(config)}
+
         ## Test expectations
 
         - Tests must cover important domain behavior, error paths, validation, and regressions.
@@ -264,6 +288,8 @@ def project_readme(config: ProjectConfig) -> str:
         ```
 
         The first agent task is stored in `FIRST_PROMPT.md`. Contributors and agents must follow `AGENTS.md`.
+
+        {agentkit_skill_note(config)}
 
         ## Selected direction
 
@@ -382,6 +408,8 @@ def next_steps(config: ProjectConfig) -> str:
         ```bash
         agent-starter prompt {root} --interactive
         ```
+
+        {agentkit_skill_note(config)}
 
         If you are considering a local Ollama model, assess it first instead of switching blindly:
 
@@ -1273,6 +1301,8 @@ def first_prompt(config: ProjectConfig) -> str:
         open questions, and handoff. Inspect the actual workspace and do not assume generated documents are correct.
 
         {mode_note}
+
+        {agentkit_skill_note(config)}
 
         Complete **Phase 0 — Discovery and executable baseline** only:
 

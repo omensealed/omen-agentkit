@@ -24,6 +24,8 @@ bash -n install.sh uninstall.sh scripts/*.sh
 
 Unit tests cover models, normalization, JSON extraction, Codex command construction, templates, security boundaries, conflict behavior, project validation, CLI answers, and wizard helpers. Generator tests use temporary directories and disable Git unless Git behavior is under examination.
 
+Agent Kit skill and `idea-prompt` tests use temporary generated projects. They must not require Codex to be installed, must not read `~/.codex`, and must not use shell interpolation for user-provided idea text.
+
 No automated test invokes Codex login/advice against a real account, network installers, `sudo`, `pacman`, GitHub publication, remote pushes, or production databases. Subprocess tests use mocks or isolated commands. Installation tests replace `HOME`, `XDG_DATA_HOME`, and `XDG_BIN_HOME` with a temporary tree.
 
 The smoke test generates a fresh project, validates it, runs its generated checks, validates all shell scripts, and confirms expected Codex/project-memory files.
@@ -44,6 +46,8 @@ Do not add a framework merely because a toolchain supports one. The wizard shoul
 `agent_starter/generator.py::REQUIRED_FILES`, `build_file_map`, templates, validation, tests, README examples, and `docs/TEMPLATE-CATALOG.md` form one file contract. Update them together.
 
 Generated `AGENTS.md`, `FIRST_PROMPT.md`, numbered docs, scripts, and `.codex/config.toml` must tell one consistent story. Verify both a new project and an existing-project renovation after changing this contract.
+
+Generated `.agents/skills/agentkit/SKILL.md` and `agentkit-skill.json` are part of the optional Codex skill contract. Keep `SKILL.md` concise and store Agent Kit-specific version data in the JSON sidecar.
 
 ## Release
 

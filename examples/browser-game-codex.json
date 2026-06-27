@@ -35,6 +35,7 @@
   "handles_payments": false,
   "primary_agent": "codex",
   "setup_agent_now": false,
+  "codex_agentkit_skill": true,
   "git_enabled": true,
   "github_actions": false,
   "github_remote": "none",

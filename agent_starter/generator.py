@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 from . import templates
+from .codex_skill import skill_files
 from .models import ProjectConfig
 
 
@@ -303,6 +304,8 @@ def build_file_map(config: ProjectConfig) -> dict[str, str]:
     }
     if config.github_actions:
         data[".github/workflows/ci.yml"] = templates.github_ci(config)
+    if config.codex_agentkit_skill:
+        data.update(skill_files())
     license_name = config.license_name.strip().lower()
     if license_name == "mit":
         data["LICENSE"] = templates.mit_license()

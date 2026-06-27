@@ -33,6 +33,8 @@ CachyOS package names are validated. The default bootstrap mode prints the plan 
 
 Generated `.codex/config.toml` uses workspace-write sandboxing and on-request approval. Generated instructions prohibit unrelated paths, credential stores, permission-bypass options, destructive migrations, remote pushes, repository publication, deployment, and irreversible operations without human approval.
 
+The optional repo-local `$agentkit` skill is a local prompt-building workflow only. It does not send keystrokes into an open terminal, run a daemon, add MCP/app-server/plugin automation, call OpenAI or GitHub, inspect Codex credentials, modify `~/.codex/config.toml`, start `codex login`, or bypass Codex approvals. Skill updates are managed through a versioned JSON sidecar and backed up before replacement.
+
 ### Local-model overreach
 
 Ollama support is limited to a local readiness check and warning-rich handoff prompt. The starter inspects installed model metadata and refuses inadvisable handoff prompts unless the user passes `--override`. It never pulls models, installs packages, sends repository content to Ollama, executes local-model output, rewrites Codex configuration, or changes project metadata away from Codex.

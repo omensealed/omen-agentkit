@@ -16,7 +16,10 @@ from typing import Any, Sequence
 
 from . import __version__
 from .agents import AgentError, get_adapter
+from .codex_skill import inspect_skill, install_skill, uninstall_skill, update_skill
 from .generator import GenerationReport, generate_project, validate_project
+from .idea_prompts import MODES as IDEA_PROMPT_MODES
+from .idea_prompts import result_to_json, write_idea_prompt
 from .models import ProjectConfig
 from .toolchains import TOOLCHAINS, normalize_language, unique
 from .wizard import CancelledByUser, run_wizard, slugify
@@ -918,6 +921,86 @@ def command_ollama_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_idea_prompt(args: argparse.Namespace) -> int:
+    result = write_idea_prompt(
+        start=Path(args.project),
+        mode=args.mode,
+        idea=args.idea,
+        arguments=args.arguments if args.from_codex else None,
+    )
+    if args.json:
+        _print(json.dumps(result_to_json(result), indent=2, sort_keys=True))
+    else:
+        _print(str(result.prompt_path))
+    if args.print:
+        _print("")
+        sys.stdout.write(result.body)
+    return 0
+
+
+def command_codex_skill_status(args: argparse.Namespace) -> int:
+    status = inspect_skill(Path(args.project))
+    _print(f"Agent Kit skill path: {status.path}")
+    _print(f"Installed: {'yes' if status.exists else 'no'}")
+    _print(f"Managed by Agent Kit: {'yes' if status.managed else 'no'}")
+    _print(f"Installed skill version: {status.installed_version or 'none'}")
+    _print(f"Bundled skill version: {status.bundled_version}")
+    _print(f"Update available: {'yes' if status.update_available else 'no'}")
+    return 0
+
+
+def _print_skill_change(action: str, written: list[Path], backup: Path | None) -> None:
+    _print(f"Agent Kit skill {action}.")
+    for path in written:
+        _print(f"  wrote {path}")
+    if backup is not None:
+        _print(f"  backup {backup}")
+    _print("Restart Codex if the skill does not appear immediately in /skills.")
+
+
+def command_codex_install_skill(args: argparse.Namespace) -> int:
+    status = inspect_skill(Path(args.project))
+    yes = args.yes
+    if status.exists and status.managed and not yes:
+        _print(f"Installed Agent Kit skill version: {status.installed_version or 'unknown'}")
+        _print(f"Bundled Agent Kit skill version: {status.bundled_version}")
+        answer = input("Update managed Agent Kit skill files now? [y/N]: ").strip().lower()
+        yes = answer in {"y", "yes"}
+        if not yes:
+            _print("No changes made.")
+            return 2
+    action, written, backup = install_skill(Path(args.project), yes=yes, force=args.force)
+    _print_skill_change(action, written, backup)
+    return 0
+
+
+def command_codex_update_skill(args: argparse.Namespace) -> int:
+    yes = args.yes
+    if not yes:
+        status = inspect_skill(Path(args.project))
+        _print(f"Installed Agent Kit skill version: {status.installed_version or 'unknown'}")
+        _print(f"Bundled Agent Kit skill version: {status.bundled_version}")
+        answer = input("Update managed Agent Kit skill files now? [y/N]: ").strip().lower()
+        yes = answer in {"y", "yes"}
+        if not yes:
+            _print("No changes made.")
+            return 2
+    action, written, backup = update_skill(Path(args.project), yes=yes)
+    _print_skill_change(action, written, backup)
+    return 0
+
+
+def command_codex_uninstall_skill(args: argparse.Namespace) -> int:
+    action, backup = uninstall_skill(Path(args.project), force=args.force)
+    if action == "missing":
+        _print("Agent Kit skill is not installed.")
+    else:
+        _print("Agent Kit skill removed.")
+        if backup is not None:
+            _print(f"  backup {backup}")
+    return 0
+
+
 def _github_remote(root: Path, config: ProjectConfig) -> int:
     visibility = "private" if config.github_remote == "create-private" else "public"
     if shutil.which("gh") is None:
@@ -1104,6 +1187,7 @@ def command_example(args: argparse.Namespace) -> int:
         "license_name": "MIT",
         "tests": ["unit", "integration"],
         "browser_tests": False,
+        "codex_agentkit_skill": True,
     }
     text = json.dumps(example, indent=2) + "\n"
     if args.output:
@@ -1211,6 +1295,16 @@ def build_parser() -> argparse.ArgumentParser:
     prompt.add_argument("--force", action="store_true", help="Replace an existing --output file.")
     prompt.set_defaults(func=command_prompt)
 
+    idea_prompt = sub.add_parser("idea-prompt", help="Write a full Agent Kit implementation prompt from a short idea.")
+    idea_prompt.add_argument("--project", default=".", help="Generated project root; defaults to the current directory.")
+    idea_prompt.add_argument("--mode", choices=IDEA_PROMPT_MODES, help="Task mode for non-interactive prompt generation.")
+    idea_prompt.add_argument("--idea", help="Short user idea for non-interactive prompt generation.")
+    idea_prompt.add_argument("--from-codex", action="store_true", help="Parse --arguments as a Codex skill invocation payload.")
+    idea_prompt.add_argument("--arguments", default="", help="Raw $agentkit arguments such as 'implement Add SQLite support'.")
+    idea_prompt.add_argument("--print", action="store_true", help="Also print the generated prompt body.")
+    idea_prompt.add_argument("--json", action="store_true", help="Print machine-readable prompt metadata.")
+    idea_prompt.set_defaults(func=command_idea_prompt)
+
     ollama = sub.add_parser(
         "ollama-check",
         help="Assess installed Ollama models before generating a local-model handoff prompt.",
@@ -1226,6 +1320,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate the handoff prompt even when the local model is inadvisable or borderline.",
     )
     ollama.set_defaults(func=command_ollama_check)
+
+    codex = sub.add_parser("codex", help="Manage repo-local Codex conveniences for generated projects.")
+    codex_sub = codex.add_subparsers(dest="codex_command", required=True)
+
+    skill_status = codex_sub.add_parser("skill-status", help="Report repo-local Agent Kit skill state.")
+    skill_status.add_argument("project", nargs="?", default=".")
+    skill_status.set_defaults(func=command_codex_skill_status)
+
+    install_skill_parser = codex_sub.add_parser("install-agentkit-skill", help="Install or update the repo-local $agentkit skill.")
+    install_skill_parser.add_argument("project", nargs="?", default=".")
+    install_skill_parser.add_argument("--yes", action="store_true", help="Allow non-interactive update of managed skill files.")
+    install_skill_parser.add_argument("--force", action="store_true", help="Replace a non-managed agentkit skill after backing it up.")
+    install_skill_parser.set_defaults(func=command_codex_install_skill)
+
+    update_skill_parser = codex_sub.add_parser("update-agentkit-skill", help="Update managed repo-local $agentkit skill files.")
+    update_skill_parser.add_argument("project", nargs="?", default=".")
+    update_skill_parser.add_argument("--yes", action="store_true", help="Confirm managed skill replacement.")
+    update_skill_parser.set_defaults(func=command_codex_update_skill)
+
+    uninstall_skill_parser = codex_sub.add_parser("uninstall-agentkit-skill", help="Remove the managed repo-local $agentkit skill.")
+    uninstall_skill_parser.add_argument("project", nargs="?", default=".")
+    uninstall_skill_parser.add_argument("--force", action="store_true", help="Remove a non-managed agentkit skill after backing it up.")
+    uninstall_skill_parser.set_defaults(func=command_codex_uninstall_skill)
 
     example = sub.add_parser("example-answers", help="Print or write an answers JSON example.")
     example.add_argument("--output")

@@ -47,6 +47,20 @@ After the first session, `agent-starter prompt /path/to/project --request "..."`
 
 The prompt reinforces the Codex-only workflow, phase-sized changes, regression testing, `./scripts/check.sh`, implementation-note updates, handoff updates, and explicit approval requirements for privileged, destructive, credential, publish, deploy, remote-push, or external actions.
 
+## Repo-local Agent Kit skill
+
+Generated projects can include a concise Codex skill at `.agents/skills/agentkit/SKILL.md`. Users invoke it inside Codex with `$agentkit ...` or select it with `/skills`; it is not a custom slash command. The skill is intentionally instruction-only. It does not fake keyboard input, run a daemon, add MCP, modify `~/.codex/config.toml`, contact OpenAI/GitHub, or bypass approvals.
+
+The skill turns a short request into a full implementation brief by telling Codex to run:
+
+```bash
+agent-starter idea-prompt --from-codex --arguments "<user request>" --json
+```
+
+Codex should pass the user request safely as an argument, read the returned `prompt_path`, and follow that generated prompt as the authoritative task brief. Prompt files are written under `docs/agent-prompts/`.
+
+The skill is versioned by `.agents/skills/agentkit/agentkit-skill.json`, not nonstandard `SKILL.md` front matter. `agent-starter codex skill-status`, `update-agentkit-skill`, and `uninstall-agentkit-skill` inspect and manage only Agent Kit-managed files, with backups before replacement. Users may need to restart Codex if a newly installed or updated skill does not appear immediately.
+
 ## Ollama readiness check
 
 `agent-starter ollama-check /path/to/project --request "..."` is an assessment and prompt-generation gate for users who want to experiment with a local Ollama model after the Codex workspace exists. It is not an alternate agent adapter, generated launcher, authentication path, or `.codex/config.toml` rewrite.

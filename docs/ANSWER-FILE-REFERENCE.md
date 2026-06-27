@@ -34,6 +34,7 @@ Unknown keys are rejected. Common credential-looking values are rejected. Custom
 - `setup_agent_now`: whether the interactive wizard should offer installation/login.
 - `agent_sandbox`: descriptive generated-project policy; the supported default is `builtin-safe`.
 - `use_ai_advisor`: whether Codex stack advice was requested.
+- `codex_agentkit_skill`: whether to generate the repo-local `$agentkit` Codex skill. Defaults to `true` for backward compatibility and beginner convenience.
 
 ## Git, test, and toolchain fields
 

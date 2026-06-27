@@ -15,6 +15,7 @@ A generated workspace can include:
 - `.codex/config.toml` with conservative project defaults;
 - `START_AGENT.sh` plus Codex setup/status helpers;
 - build, run, lint, test, and aggregate check scripts appropriate to the selected toolchains;
+- optional repo-local `$agentkit` Codex skill files under `.agents/skills/agentkit/`;
 - optional local Git initialization and deferred GitHub Actions workflow;
 - safe handling for existing repositories through proposals and timestamped backups instead of silent replacement.
 
@@ -129,6 +130,13 @@ agent-starter launch /path/to/project --kickoff
 # Generate a copy/paste prompt for the next Codex session
 agent-starter prompt /path/to/project --request "Add import support"
 
+# From inside a generated project, turn a short Codex skill request into a full prompt file
+agent-starter idea-prompt --from-codex --arguments "implement Add SQLite save/load support"
+
+# Install or update the repo-local $agentkit Codex skill
+agent-starter codex install-agentkit-skill /path/to/project
+agent-starter codex skill-status /path/to/project
+
 # Add task-specific guidance
 agent-starter prompt /path/to/project --template bug --request "Fix CSV import crash"
 
@@ -197,6 +205,16 @@ agent-starter prompt /path/to/project --request "Implement the next planned feat
 For a guided beginner flow, use `agent-starter prompt /path/to/project --interactive`; it asks about task type, recent changes, affected surfaces, risk, and verification before printing the same Codex-safe continuation prompt.
 Named templates are available with `--template feature`, `--template bug`, `--template cleanup`, `--template docs`, `--template test-baseline`, and `--template release-prep`.
 
+Generated projects can also include a repo-local Agent Kit Codex skill. Inside Codex, `$agentkit` is a skill invocation, not a custom slash command:
+
+```text
+$agentkit implement Add your feature idea here
+$agentkit fix Describe the bug here
+$agentkit plan Describe the project change here
+```
+
+The skill does not send keystrokes, run a daemon, modify `~/.codex/config.toml`, contact OpenAI or GitHub by itself, or bypass approvals. It tells Codex to run the local prompt builder, `agent-starter idea-prompt`, read the generated file under `docs/agent-prompts/`, and treat that generated prompt as the task brief. Use `agent-starter codex skill-status`, `update-agentkit-skill`, and `uninstall-agentkit-skill` to inspect or manage the versioned skill sidecar. Restart Codex if a newly installed or updated skill does not appear immediately.
+
 If a user wants to attempt continuation with a local Ollama model, check the installed models first:
 
 ```bash
@@ -232,7 +250,9 @@ That command performs Python syntax checks, the unit/integration suite, shell sy
 agent_starter/
   agents.py       Codex CLI boundary and structured advisor call
   cli.py          commands, validation, authorization, launch, GitHub setup
+  codex_skill.py  repo-local Agent Kit skill rendering/status/update helpers
   generator.py    safe rendering, writes, conflict handling, validation
+  idea_prompts.py local prompt-file builder used by the $agentkit skill
   models.py       serializable project configuration
   templates.py    generated project files and documentation
   toolchains.py   language/database mappings for CachyOS and CI
