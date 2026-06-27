@@ -1,5 +1,14 @@
 # Progress
 
+## 0.4.3 patch release prep
+
+- [x] Diagnose canary project host fallback after sandbox was requested.
+- [x] Clarify `toolchain` mode as host Codex plus containerized command execution.
+- [x] Strengthen generated prompts so sandbox failures block instead of silently falling back to host checks.
+- [x] Run final full source check after version bump.
+- [ ] Build and verify patch release archive/checksum locally.
+- [ ] Tag and publish patch release if final archive check passes.
+
 ## 0.4.2 patch release prep
 
 - [x] Remove noninteractive Podman TTY allocation from generated `scripts/sandbox/exec` and `scripts/sandbox/check`.

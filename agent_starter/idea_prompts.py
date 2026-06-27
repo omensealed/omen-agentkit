@@ -118,14 +118,17 @@ def _sandbox_guidance(config: ProjectConfig | None) -> str:
         "## Sandbox guidance",
         "",
         f"- Agent Kit sandbox mode: `{config.sandbox.mode}` using rootless Podman.",
-        "- Prefer generated sandbox scripts for build and test work when they exist.",
+        "- Treat enabled sandbox metadata as a requested execution boundary for build/test/toolchain work.",
         "- Use `scripts/sandbox/doctor` before assuming the sandbox is ready.",
         "- Use `scripts/sandbox/build` to build the project container when needed.",
         "- Use `scripts/sandbox/check` for full verification when available, after focused tests.",
-        "- Use host scripts only when project docs say host execution is required.",
+        "- Do not silently fall back to host build/test commands if `doctor`, `build`, or `check` fails; record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether to continue host-only.",
+        "- Use host scripts only when project docs say host execution is required or the human explicitly approves a temporary host-only fallback.",
         "- Do not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory.",
         "- Do not use host `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox` as an answer to sandbox friction.",
     ]
+    if config.sandbox.mode == "toolchain":
+        lines.append("- In `toolchain` mode, Codex may still edit the host project directory; the container boundary applies to generated build/test/toolchain scripts running against `/workspace`.")
     if config.database in {"mariadb", "postgresql"}:
         lines.append("- Use `scripts/sandbox/db-up` for the local dev database and `scripts/sandbox/db-down` to stop it without deleting data.")
     if config.project_type in {"web", "api"}:
@@ -210,7 +213,7 @@ def build_prompt_body(*, mode: str, idea: str, root: Path, config: ProjectConfig
         "- Make the smallest coherent change that satisfies the request.\n"
         "- Prefer existing project patterns and standard-library/local helpers over new dependencies.\n"
         "- Add or update tests when behavior changes.\n"
-        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it, otherwise `./scripts/check.sh` when available.\n"
+        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it; do not silently use `./scripts/check.sh` as a replacement for a requested sandbox check unless the human approves host-only fallback.\n"
         "- Update `docs/11-IMPLEMENTATION-NOTES.md` with objective, files changed, commands run, results, decisions, implications, unresolved problems, and next step.\n"
         "- Update `docs/09-PROGRESS.md` only when the project state actually changed; if this project uses `docs/10-PROGRESS.md` as its progress ledger, update that file instead.\n"
         "- Update `docs/10-DECISIONS.md` only for durable architecture, dependency, data, or workflow decisions.\n"

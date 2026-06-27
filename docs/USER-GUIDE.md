@@ -104,7 +104,7 @@ scripts/sandbox/build
 scripts/sandbox/check
 ```
 
-The default sandbox mode keeps Codex on the host and runs project build/test/toolchain work in a container. If you explicitly selected Codex-inside-container mode, use:
+The default `toolchain` sandbox mode keeps Codex on the host editing the local project files and runs project build/test/toolchain work in a container against the mounted `/workspace`. If the sandbox was requested and `doctor`, `build`, or `check` fails, do not treat host checks as equivalent unless you deliberately approve a temporary host-only fallback. If you explicitly selected Codex-inside-container mode, use:
 
 ```bash
 scripts/sandbox/codex-login

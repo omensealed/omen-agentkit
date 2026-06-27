@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.3 — 2026-06-27
+
+- Clarified generated rootless Podman sandbox contracts so `toolchain` mode explicitly means host Codex editing mounted project files while build/test/toolchain commands run in Podman.
+- Strengthened generated first prompts, autonomous prompts, sandbox docs, and `$agentkit` idea prompts so requested sandbox failures stop as `BLOCKED_ENVIRONMENT` or require explicit human approval before host-only fallback.
+
 ## 0.4.2 — 2026-06-27
 
 - Changed generated rootless Podman toolchain `exec` and `check` helpers to avoid allocating a TTY in noninteractive runs, removing Podman's non-TTY warning while keeping `scripts/sandbox/shell` interactive.

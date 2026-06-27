@@ -221,7 +221,7 @@ The skill does not send keystrokes, run a daemon, modify `~/.codex/config.toml`,
 
 ## Optional rootless Podman sandbox
 
-New local projects can include a rootless Podman sandbox. The default sandbox mode keeps Codex on the host and runs project build/test/toolchain commands in a project container. An explicit Codex-inside-container mode generates project-scoped Codex launch scripts and a project-specific Codex home volume.
+New local projects can include a rootless Podman sandbox. The default `toolchain` sandbox mode keeps Codex on the host editing the local project files and runs project build/test/toolchain commands in a project container against the mounted `/workspace`. An explicit Codex-inside-container mode generates project-scoped Codex launch scripts and a project-specific Codex home volume.
 
 Generated sandbox files live under `.agent-starter/sandbox/` and `scripts/sandbox/`. They do not mount host `~/.codex`, `~/.ssh`, browser profiles, GitHub credentials, production configs, or the host home directory by default. Container auth uses `scripts/sandbox/codex-login` only when the user deliberately runs it. The starter recommends handoff summaries instead of copying raw Codex sessions or auth files into containers.
 
@@ -236,7 +236,7 @@ scripts/sandbox/codex-login  # only when Codex-inside-container mode was explici
 scripts/sandbox/codex
 ```
 
-Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
+Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. If the sandbox was requested and `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails, record the failure and fix the sandbox or explicitly approve a host-only fallback; do not silently treat host checks as equivalent. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
 
 If a user wants to attempt continuation with a local Ollama model, check the installed models first:
 

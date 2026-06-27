@@ -75,10 +75,15 @@ class SandboxGenerationTests(unittest.TestCase):
                 (root / relative).read_text(encoding="utf-8")
                 for relative in ("README.md", "NEXT_STEPS.md", "FIRST_PROMPT.md", "AGENTS.md", "docs/12-SANDBOX.md")
             )
+            normalized_docs = " ".join(docs.split())
             self.assertIn("rootless Podman sandbox", docs)
             self.assertIn("scripts/sandbox/check", docs)
+            self.assertIn("BLOCKED_ENVIRONMENT", docs)
+            self.assertIn("Do not silently fall back to host build/test commands", normalized_docs)
+            self.assertIn("Codex still edits this project directory from the host", docs)
             self.assertIn("Do not mount host secrets", docs)
             self.assertNotIn("codex --sandbox danger-full-access", docs)
+            self.assertNotIn("do not let sandbox setup block", docs.lower())
 
     def test_noninteractive_toolchain_commands_do_not_request_tty_or_fixed_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -176,7 +181,11 @@ class SandboxGenerationTests(unittest.TestCase):
             prompt = (enabled / "FIRST_RUN_AUTONOMOUS.md").read_text(encoding="utf-8")
             self.assertIn("COMPLETE", prompt)
             self.assertIn("BLOCKED_PERMISSION", prompt)
+            self.assertIn("BLOCKED_ENVIRONMENT", prompt)
+            self.assertIn("scripts/sandbox/doctor", prompt)
+            self.assertIn("scripts/sandbox/build", prompt)
             self.assertIn("scripts/sandbox/check", prompt)
+            self.assertIn("Do not silently fall back to host build/test commands", prompt)
             self.assertIn("Do not install host packages", prompt)
             self.assertIn("Do not deploy", prompt)
 

@@ -121,6 +121,13 @@ def agentkit_skill_note(config: ProjectConfig) -> str:
 def sandbox_note(config: ProjectConfig) -> str:
     if not config.sandbox.enabled:
         return ""
+    mode_explanation = (
+        "Toolchain mode keeps Codex on the host editing the project files, but build/test/toolchain commands should run through the generated Podman scripts."
+        if config.sandbox.mode == "toolchain"
+        else "Codex-inside-container mode is intended to run Codex itself inside the project container after an explicit container login."
+        if config.sandbox.codex_inside_container
+        else "Files-only mode generates reviewable sandbox files without making them the default execution path."
+    )
     codex_inside = (
         """
         Codex-inside-container mode was enabled:
@@ -139,7 +146,8 @@ def sandbox_note(config: ProjectConfig) -> str:
         f"""
         ## Rootless Podman sandbox
 
-        This project includes an optional rootless Podman sandbox. Mode: `{config.sandbox.mode}`.
+        This project includes a rootless Podman sandbox. Mode: `{config.sandbox.mode}`.
+        {mode_explanation}
         It does not install host packages or run Podman during generation.
 
         For host Codex with containerized checks:
@@ -159,11 +167,23 @@ def sandbox_note(config: ProjectConfig) -> str:
 def first_prompt_sandbox_note(config: ProjectConfig) -> str:
     if not config.sandbox.enabled:
         return ""
+    mode_explanation = (
+        "In `toolchain` mode, Codex still edits this project directory from the host; the container boundary applies to build/test/toolchain commands run through `scripts/sandbox/*`."
+        if config.sandbox.mode == "toolchain"
+        else "In Codex-inside-container mode, start Codex with the generated sandbox scripts after explicit container login."
+        if config.sandbox.codex_inside_container
+        else "In files-only mode, treat the sandbox files as reviewable assets until the user explicitly asks to use them."
+    )
     return clean(
-        """
-        Sandbox note: this project includes optional rootless Podman files. Read `docs/12-SANDBOX.md`.
-        Prefer `scripts/sandbox/check` for full verification after focused tests when the sandbox is available,
-        but do not let sandbox setup block the initial repository orientation.
+        f"""
+        Sandbox note: this project has rootless Podman sandbox metadata enabled. Read `docs/12-SANDBOX.md`.
+        {mode_explanation}
+
+        Before implementation work that depends on build/test/toolchain execution, run `scripts/sandbox/doctor`
+        and `scripts/sandbox/build`. Use `scripts/sandbox/check` for full verification when available. Do not
+        silently fall back to host build/test commands if the sandbox was requested but `doctor`, `build`, or
+        `check` fails. Record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether
+        they want a temporary host-only fallback.
         """
     )
 

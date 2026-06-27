@@ -96,6 +96,10 @@ class IdeaPromptTests(unittest.TestCase):
             self.assertIn("scripts/sandbox/web", result.body)
             self.assertIn("Do not mount host `~/.codex`", result.body)
             self.assertIn("Do not use host `danger-full-access`", result.body)
+            self.assertIn("Treat enabled sandbox metadata as a requested execution boundary", result.body)
+            self.assertIn("Do not silently fall back to host build/test commands", result.body)
+            self.assertIn("BLOCKED_ENVIRONMENT", result.body)
+            self.assertIn("Codex may still edit the host project directory", result.body)
 
     def test_cli_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

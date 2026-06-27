@@ -339,11 +339,19 @@ def sandbox_doc(config: ProjectConfig) -> str:
         if config.project_type == "game" or "godot" in config.languages
         else ""
     )
+    mode_note = (
+        "\nIn `toolchain` mode, Codex normally runs on the host and edits the project directory directly. The container boundary applies to build, test, database, and toolchain commands run through `scripts/sandbox/*`. Source files still live in the local project and are mounted into the container at `/workspace`.\n"
+        if config.sandbox.mode == "toolchain"
+        else "\nIn Codex-inside-container mode, use the generated `codex-login`, `codex`, and `resume` scripts only after explicit user action. Do not mount or copy host Codex auth into the container.\n"
+        if config.sandbox.codex_inside_container
+        else "\nIn files-only mode, these files are generated for review and are not the default execution path until a human explicitly chooses to use them.\n"
+    )
     return clean(
         f"""
         # Sandbox
 
         This project can use a rootless Podman sandbox. Mode: `{config.sandbox.mode}`.
+        {mode_note}
 
         ## Safety model
 
@@ -362,6 +370,10 @@ def sandbox_doc(config: ProjectConfig) -> str:
         scripts/sandbox/check
         scripts/sandbox/shell
         ```
+
+        If the sandbox was requested for build/test work, do not silently fall back to host build/test commands
+        when `doctor`, `build`, or `check` fails. Record the exact failure and either stop with
+        `BLOCKED_ENVIRONMENT` or ask the human whether a temporary host-only fallback is acceptable.
 
         For Codex inside the container:
 
@@ -382,7 +394,7 @@ def autonomous_prompt(config: ProjectConfig) -> str:
         """
         # First-run autonomous sandbox prompt
 
-        Use this only for disposable/local development workspaces. Prefer the generated sandbox scripts and do not request host full-access.
+        Use this only for disposable/local development workspaces. The sandbox is part of the requested execution boundary; do not request host full-access.
 
         Continue until exactly one terminal state is reached:
 
@@ -395,7 +407,11 @@ def autonomous_prompt(config: ProjectConfig) -> str:
 
         Work rules:
 
-        - Prefer `scripts/sandbox/check` for verification.
+        - Run `scripts/sandbox/doctor` before implementation work that depends on build/test/toolchain commands.
+        - Run `scripts/sandbox/build` before relying on containerized checks.
+        - Use `scripts/sandbox/check` for full verification.
+        - Do not silently fall back to host build/test commands if `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails.
+        - If the sandbox is unavailable, record the exact failure and stop with `BLOCKED_ENVIRONMENT` unless the human explicitly approves a host-only fallback.
         - Do not install host packages.
         - Do not deploy.
         - Do not rsync to production.

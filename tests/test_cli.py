@@ -20,7 +20,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             main(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("0.4.2", output.getvalue())
+        self.assertIn("0.4.3", output.getvalue())
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):

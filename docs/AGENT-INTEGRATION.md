@@ -63,11 +63,11 @@ The skill is versioned by `.agents/skills/agentkit/agentkit-skill.json`, not non
 
 ## Rootless Podman sandbox workflow
 
-Generated projects can optionally include rootless Podman files under `.agent-starter/sandbox/` and `scripts/sandbox/`. The default mode is host Codex with containerized project build/test/toolchain commands. Codex-inside-container mode is explicit and uses a project-specific Codex home volume rather than mounting host `~/.codex`.
+Generated projects can optionally include rootless Podman files under `.agent-starter/sandbox/` and `scripts/sandbox/`. The default `toolchain` mode is host Codex editing the local project files, with project build/test/toolchain commands run through Podman against the mounted `/workspace`. Codex-inside-container mode is explicit and uses a project-specific Codex home volume rather than mounting host `~/.codex`.
 
 The source command `agent-starter sandbox doctor /path/to/project` and generated `scripts/sandbox/doctor` check readiness without running `sudo` or installing packages. Missing CachyOS tools are printed as reviewable commands only.
 
-When sandbox metadata exists, `agent-starter idea-prompt` adds sandbox-aware guidance: prefer `scripts/sandbox/check`, use database helper scripts such as `scripts/sandbox/db-up` when present, and use host scripts only when generated docs say host execution is required. Game projects get container-safe headless checks plus host playtesting guidance.
+When sandbox metadata exists, `agent-starter idea-prompt` adds sandbox-aware guidance: run `scripts/sandbox/doctor`, build the container, prefer `scripts/sandbox/check`, use database helper scripts such as `scripts/sandbox/db-up` when present, and do not silently replace a requested sandbox check with host checks. If `doctor`, `build`, or `check` fails, Codex should record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether a temporary host-only fallback is acceptable. Game projects get container-safe headless checks plus host playtesting guidance.
 
 The sandbox workflow does not send keystrokes to a terminal, run Codex login automatically, copy host sessions, mount host SSH keys, create remotes, deploy, or bypass Codex approvals. For container migration, generated projects include `docs/agent-prompts/create-container-handoff.md`, which asks Codex to write a concise no-secrets `docs/CODEX-HANDOFF.md` instead of importing raw session transcripts.
 
