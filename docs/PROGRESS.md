@@ -5,7 +5,7 @@
 - [x] Add repo-local `$agentkit` skill workflow and optional rootless Podman sandbox support.
 - [x] Update source docs, answer-file reference, curated examples, tests, changelog, and implementation notes.
 - [x] Run final full source check after version bump.
-- [ ] Build and verify release archive/checksum if publication or handoff is requested.
+- [x] Build and verify release archive/checksum for local handoff.
 
 ## 0.2.0 Codex-only release
 
