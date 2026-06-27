@@ -73,6 +73,55 @@ class CliTests(unittest.TestCase):
             loaded = load_answers(path, path_override=None, allow_custom_commands=True)
             self.assertEqual(loaded.custom_test_commands, ["echo reviewed"])
 
+    def test_answers_file_accepts_sandbox_config_and_old_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "answers.json"
+            data = {
+                "project_name": "Sandbox Answers",
+                "project_path": str(Path(temp) / "project"),
+                "project_mode": "new",
+                "description": "test",
+                "primary_agent": "codex",
+                "database": "none",
+            }
+            path.write_text(json.dumps(data), encoding="utf-8")
+            old_loaded = load_answers(path, path_override=None, allow_custom_commands=False)
+            self.assertFalse(old_loaded.sandbox.enabled)
+            self.assertEqual(old_loaded.sandbox.mode, "none")
+
+            data["sandbox"] = {
+                "enabled": True,
+                "engine": "podman",
+                "mode": "codex",
+                "codex_inside_container": True,
+                "rootless_required": True,
+                "install_agentkit_skill": True,
+                "first_run_autonomous_prompt": True,
+            }
+            path.write_text(json.dumps(data), encoding="utf-8")
+            loaded = load_answers(path, path_override=None, allow_custom_commands=False)
+            self.assertTrue(loaded.sandbox.enabled)
+            self.assertEqual(loaded.sandbox.mode, "codex")
+            self.assertTrue(loaded.sandbox.codex_inside_container)
+
+    def test_sandbox_doctor_cli_reports_missing_podman(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(
+                project_name="Sandbox CLI",
+                project_path=str(root),
+                git_enabled=False,
+            )
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+            output = io.StringIO()
+            with mock.patch("agent_starter.sandbox.shutil.which", return_value=None), contextlib.redirect_stdout(output):
+                code = main(["sandbox", "doctor", str(root)])
+            self.assertEqual(code, 2)
+            self.assertIn("[missing] podman", output.getvalue())
+            self.assertIn("Review on CachyOS", output.getvalue())
+
     def test_secret_like_answers_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "answers.json"

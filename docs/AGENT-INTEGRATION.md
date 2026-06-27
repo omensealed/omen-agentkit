@@ -61,6 +61,16 @@ Codex should pass the user request safely as an argument, read the returned `pro
 
 The skill is versioned by `.agents/skills/agentkit/agentkit-skill.json`, not nonstandard `SKILL.md` front matter. `agent-starter codex skill-status`, `update-agentkit-skill`, and `uninstall-agentkit-skill` inspect and manage only Agent Kit-managed files, with backups before replacement. Users may need to restart Codex if a newly installed or updated skill does not appear immediately.
 
+## Rootless Podman sandbox workflow
+
+Generated projects can optionally include rootless Podman files under `.agent-starter/sandbox/` and `scripts/sandbox/`. The default mode is host Codex with containerized project build/test/toolchain commands. Codex-inside-container mode is explicit and uses a project-specific Codex home volume rather than mounting host `~/.codex`.
+
+The source command `agent-starter sandbox doctor /path/to/project` and generated `scripts/sandbox/doctor` check readiness without running `sudo` or installing packages. Missing CachyOS tools are printed as reviewable commands only.
+
+When sandbox metadata exists, `agent-starter idea-prompt` adds sandbox-aware guidance: prefer `scripts/sandbox/check`, use database helper scripts such as `scripts/sandbox/db-up` when present, and use host scripts only when generated docs say host execution is required. Game projects get container-safe headless checks plus host playtesting guidance.
+
+The sandbox workflow does not send keystrokes to a terminal, run Codex login automatically, copy host sessions, mount host SSH keys, create remotes, deploy, or bypass Codex approvals. For container migration, generated projects include `docs/agent-prompts/create-container-handoff.md`, which asks Codex to write a concise no-secrets `docs/CODEX-HANDOFF.md` instead of importing raw session transcripts.
+
 ## Ollama readiness check
 
 `agent-starter ollama-check /path/to/project --request "..."` is an assessment and prompt-generation gate for users who want to experiment with a local Ollama model after the Codex workspace exists. It is not an alternate agent adapter, generated launcher, authentication path, or `.codex/config.toml` rewrite.

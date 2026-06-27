@@ -5,6 +5,7 @@
 - Added `agent-starter idea-prompt` for local prompt-file generation from short `$agentkit` requests.
 - Added `agent-starter codex skill-status`, `install-agentkit-skill`, `update-agentkit-skill`, and `uninstall-agentkit-skill` for versioned repo-local Agent Kit Codex skill management.
 - Generated projects can include `.agents/skills/agentkit/SKILL.md` and `agentkit-skill.json` by default, with answers-file opt-out through `codex_agentkit_skill: false`.
+- Added optional rootless Podman sandbox generation with `agent-starter sandbox doctor`, generated `scripts/sandbox/*` helpers, sandbox-aware `$agentkit` prompts, project-scoped Codex-inside-container launch scripts when explicitly selected, and no-secrets container handoff guidance.
 
 ## 0.3.0 — 2026-06-24
 

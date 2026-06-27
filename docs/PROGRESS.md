@@ -22,6 +22,7 @@
 - [x] Source tests, generated-project smoke test, and isolated user installation test.
 - [x] Copy/paste Codex continuation prompt generation for later project phases and feature requests.
 - [x] Repo-local `$agentkit` Codex skill workflow with versioned sidecar metadata and local `idea-prompt` file generation.
+- [x] Optional rootless Podman project sandbox generation for containerized toolchain checks and explicit Codex-inside-container workflows.
 - [x] Assessment-only Ollama readiness gate with override-required local-model handoff prompt generation.
 - [x] Local-first GitHub posture: local Git remains available while GitHub Actions are deferred by default.
 - [x] Workspace status and GitHub readiness gates for local-first project management.

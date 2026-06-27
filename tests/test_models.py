@@ -24,6 +24,33 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertEqual(loaded.project_name, "Example")
         self.assertEqual(loaded.primary_agent, "codex")
 
+    def test_missing_sandbox_defaults_to_disabled(self) -> None:
+        loaded = ProjectConfig.from_dict({"project_name": "Example"})
+        self.assertFalse(loaded.sandbox.enabled)
+        self.assertEqual(loaded.sandbox.mode, "none")
+        self.assertEqual(loaded.sandbox.engine, "podman")
+
+    def test_sandbox_config_round_trip(self) -> None:
+        loaded = ProjectConfig.from_dict(
+            {
+                "project_name": "Sandboxed",
+                "sandbox": {
+                    "enabled": True,
+                    "engine": "podman",
+                    "mode": "codex",
+                    "codex_inside_container": True,
+                    "rootless_required": True,
+                    "install_agentkit_skill": True,
+                    "first_run_autonomous_prompt": True,
+                },
+            }
+        )
+        self.assertTrue(loaded.sandbox.enabled)
+        self.assertEqual(loaded.sandbox.mode, "codex")
+        self.assertTrue(loaded.sandbox.codex_inside_container)
+        self.assertTrue(loaded.sandbox.first_run_autonomous_prompt)
+        self.assertEqual(loaded.to_dict()["sandbox"]["engine"], "podman")
+
 
 if __name__ == "__main__":
     unittest.main()

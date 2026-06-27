@@ -26,6 +26,8 @@ Unit tests cover models, normalization, JSON extraction, Codex command construct
 
 Agent Kit skill and `idea-prompt` tests use temporary generated projects. They must not require Codex to be installed, must not read `~/.codex`, and must not use shell interpolation for user-provided idea text.
 
+Sandbox tests use temporary generated projects and mocks. They must not require Podman to be installed, must not run `sudo`, must not install packages, must not perform real Codex login, and must not mount or inspect host Codex credentials, SSH keys, browser profiles, or the host home directory.
+
 No automated test invokes Codex login/advice against a real account, network installers, `sudo`, `pacman`, GitHub publication, remote pushes, or production databases. Subprocess tests use mocks or isolated commands. Installation tests replace `HOME`, `XDG_DATA_HOME`, and `XDG_BIN_HOME` with a temporary tree.
 
 The smoke test generates a fresh project, validates it, runs its generated checks, validates all shell scripts, and confirms expected Codex/project-memory files.
@@ -48,6 +50,8 @@ Do not add a framework merely because a toolchain supports one. The wizard shoul
 Generated `AGENTS.md`, `FIRST_PROMPT.md`, numbered docs, scripts, and `.codex/config.toml` must tell one consistent story. Verify both a new project and an existing-project renovation after changing this contract.
 
 Generated `.agents/skills/agentkit/SKILL.md` and `agentkit-skill.json` are part of the optional Codex skill contract. Keep `SKILL.md` concise and store Agent Kit-specific version data in the JSON sidecar.
+
+Generated `.agent-starter/sandbox/`, `scripts/sandbox/`, optional `docs/12-SANDBOX.md`, and optional `FIRST_RUN_AUTONOMOUS.md` are part of the rootless Podman sandbox contract. Keep scripts POSIX-shell friendly where practical, reviewable, project-scoped, and free of host secret mounts. Normal tests should validate generated text and syntax without requiring Podman.
 
 ## Release
 

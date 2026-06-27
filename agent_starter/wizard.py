@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .agents import AgentAdapter, AgentError, get_adapter
-from .models import AdvisorRecommendation, ProjectConfig
+from .models import AdvisorRecommendation, ProjectConfig, SandboxConfig
 from .toolchains import TOOLCHAINS, fallback_recommendation, normalize_language, packages_for, unique
 
 InputFn = Callable[[str], str]
@@ -376,6 +376,33 @@ def run_wizard(
         "Install the repo-local `$agentkit` Codex skill so future short requests can be expanded into full Agent Kit prompts from inside Codex?",
         default=True,
     )
+
+    p.section("Rootless Podman sandbox")
+    p.output("The optional project sandbox generates reviewable Podman files only. It does not install packages or run Podman during generation.")
+    existing_default = config.project_mode == "new"
+    if config.project_mode == "existing":
+        p.output("Existing/renovation projects may contain production assumptions. Defaulting sandbox generation to no until reviewed.")
+    sandbox_enabled = p.confirm("Create a rootless Podman development sandbox for this project?", default=existing_default)
+    if sandbox_enabled:
+        sandbox_mode = p.choose(
+            "How should Codex use it?",
+            [
+                ("toolchain", "Host Codex, containerized test/toolchain runner"),
+                ("codex", "Run Codex itself inside the project container"),
+                ("files-only", "Generate sandbox files only"),
+            ],
+            default="toolchain",
+        )
+        autonomous = p.confirm("Create a first-run autonomous bootstrap prompt for the sandbox?", default=False)
+        config.sandbox = SandboxConfig(
+            enabled=True,
+            mode=sandbox_mode,
+            codex_inside_container=sandbox_mode == "codex",
+            first_run_autonomous_prompt=autonomous,
+            install_agentkit_skill=config.codex_agentkit_skill,
+        )
+    else:
+        config.sandbox = SandboxConfig()
 
     p.section("Technology stack")
     config.stack_strategy = p.choose(

@@ -23,6 +23,7 @@ from typing import Iterable
 from . import templates
 from .codex_skill import skill_files
 from .models import ProjectConfig
+from .sandbox import SANDBOX_EXECUTABLES, file_map as sandbox_file_map
 
 
 REQUIRED_FILES: tuple[str, ...] = (
@@ -75,6 +76,7 @@ EXECUTABLE_FILES: tuple[str, ...] = (
     "scripts/setup-agent.sh",
     "scripts/agent-status.sh",
     "scripts/new-implementation-note.sh",
+    *SANDBOX_EXECUTABLES,
 )
 
 
@@ -306,6 +308,7 @@ def build_file_map(config: ProjectConfig) -> dict[str, str]:
         data[".github/workflows/ci.yml"] = templates.github_ci(config)
     if config.codex_agentkit_skill:
         data.update(skill_files())
+    data.update(sandbox_file_map(config))
     license_name = config.license_name.strip().lower()
     if license_name == "mit":
         data["LICENSE"] = templates.mit_license()

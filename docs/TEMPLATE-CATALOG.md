@@ -13,6 +13,7 @@
 - `.agent-starter/project.json`: normalized non-secret project configuration.
 - `.agent-starter/manifest.json`: hashes/modes for generated managed files.
 - `.agent-starter/rsync-excludes`: review-first local/SSH mirror excludes for `agent-starter rsync-plan`.
+- `.agent-starter/sandbox/Containerfile`, `sandbox.json`, and `README.md`: optional rootless Podman project sandbox definition.
 - `.gitignore`, license, language-specific starter metadata, and optional GitHub workflow as applicable. The generated `.gitignore` excludes local AI/runtime artifacts such as Codex logs, session JSONL files, prompt drafts, local-model handoff drafts, starter proposals, and backups while keeping durable project docs trackable.
 
 ## Documentation memory
@@ -35,6 +36,8 @@
 - `docs/14-AGENT-HANDOFF.md`: compact restart context for a fresh Codex session.
 - `docs/15-OPEN-QUESTIONS.md`: unresolved product and engineering questions.
 - `docs/AI-STACK-RECOMMENDATION.md`: reviewed Codex or deterministic fallback recommendation.
+- `docs/12-SANDBOX.md`: optional rootless Podman security model and generated command guide when sandboxing is enabled.
+- `docs/agent-prompts/create-container-handoff.md`: optional no-secrets handoff prompt for moving from host Codex context to a container session.
 
 ## Scripts
 
@@ -44,5 +47,7 @@
 - `scripts/setup-agent.sh`: official Codex install/login boundary.
 - `scripts/agent-status.sh`: Codex version and login status.
 - `scripts/new-implementation-note.sh`: appends a complete note skeleton.
+- `scripts/sandbox/*`: optional rootless Podman doctor/build/shell/exec/check/logs/clean scripts, plus Codex, database, web, and game helpers when selected by project metadata.
+- `scripts/playtest-host`: optional host playtest helper for game projects where container GUI/audio/controller support is intentionally not promised.
 
 Template changes must update generator requirements, validation, tests, this catalog, and representative generated-project inspections together.

@@ -76,6 +76,39 @@ class AdvisorRecommendation:
 
 
 @dataclass(slots=True)
+class SandboxConfig:
+    """Optional rootless Podman sandbox configuration for generated projects."""
+
+    enabled: bool = False
+    engine: str = "podman"
+    mode: str = "none"  # none | toolchain | codex | files-only
+    codex_inside_container: bool = False
+    rootless_required: bool = True
+    install_agentkit_skill: bool = True
+    first_run_autonomous_prompt: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "SandboxConfig":
+        if not isinstance(data, dict):
+            return cls()
+        allowed = cls.__dataclass_fields__
+        kwargs = {name: data[name] for name in allowed if name in data}
+        config = cls(**kwargs)
+        config.engine = str(config.engine or "podman").strip().lower()
+        config.mode = str(config.mode or "none").strip().lower()
+        if config.mode not in {"none", "toolchain", "codex", "files-only"}:
+            config.mode = "none"
+        if config.engine != "podman":
+            config.engine = "podman"
+        config.enabled = bool(config.enabled and config.mode != "none")
+        config.codex_inside_container = bool(config.codex_inside_container or config.mode == "codex")
+        if config.codex_inside_container:
+            config.mode = "codex"
+            config.enabled = True
+        return config
+
+
+@dataclass(slots=True)
 class ProjectConfig:
     """Answers collected by the wizard and persisted with generated projects."""
 
@@ -132,6 +165,7 @@ class ProjectConfig:
 
     open_questions: list[str] = field(default_factory=list)
     advisor: AdvisorRecommendation = field(default_factory=AdvisorRecommendation)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -149,6 +183,9 @@ class ProjectConfig:
                         source=str(advisor_data.get("source", "saved")),
                         raw_output=str(advisor_data.get("raw_output", "")),
                     )
+                continue
+            if name == "sandbox":
+                kwargs[name] = SandboxConfig.from_dict(data.get("sandbox"))
                 continue
             if name in data:
                 kwargs[name] = data[name]

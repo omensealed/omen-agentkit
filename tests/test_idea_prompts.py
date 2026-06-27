@@ -10,7 +10,7 @@ from unittest import mock
 
 from agent_starter.generator import generate_project
 from agent_starter.idea_prompts import parse_mode_and_idea, write_idea_prompt
-from agent_starter.models import ProjectConfig
+from agent_starter.models import ProjectConfig, SandboxConfig
 
 
 class IdeaPromptTests(unittest.TestCase):
@@ -74,6 +74,28 @@ class IdeaPromptTests(unittest.TestCase):
                 result = write_idea_prompt(start=root, mode="docs", idea="Refresh README")
             self.assertTrue(result.prompt_path.is_file())
             self.assertIn("Update documentation accurately", result.body)
+
+    def test_prompt_includes_sandbox_guidance_when_project_has_sandbox(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(
+                project_name="Sandbox Prompt",
+                project_slug="sandbox-prompt",
+                project_path=str(root),
+                project_type="web",
+                languages=["python"],
+                database="mariadb",
+                git_enabled=False,
+                sandbox=SandboxConfig(enabled=True, mode="toolchain"),
+            )
+            self.assertTrue(generate_project(config).ok)
+            result = write_idea_prompt(start=root, mode="implement", idea="Add a dashboard")
+            self.assertIn("Agent Kit sandbox mode: `toolchain`", result.body)
+            self.assertIn("scripts/sandbox/check", result.body)
+            self.assertIn("scripts/sandbox/db-up", result.body)
+            self.assertIn("scripts/sandbox/web", result.body)
+            self.assertIn("Do not mount host `~/.codex`", result.body)
+            self.assertIn("Do not use host `danger-full-access`", result.body)
 
     def test_cli_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

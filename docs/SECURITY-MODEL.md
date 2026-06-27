@@ -35,6 +35,20 @@ Generated `.codex/config.toml` uses workspace-write sandboxing and on-request ap
 
 The optional repo-local `$agentkit` skill is a local prompt-building workflow only. It does not send keystrokes into an open terminal, run a daemon, add MCP/app-server/plugin automation, call OpenAI or GitHub, inspect Codex credentials, modify `~/.codex/config.toml`, start `codex login`, or bypass Codex approvals. Skill updates are managed through a versioned JSON sidecar and backed up before replacement.
 
+### Rootless Podman project sandbox
+
+Optional sandbox generation separates three layers:
+
+- Codex's own sandbox: `read-only`, `workspace-write`, and other official Codex approval modes.
+- Rootless Podman project container: container filesystem plus the project bind mount at `/workspace`.
+- Host system: not mounted except for the selected project workspace and explicit local artifacts.
+
+The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, GPG/SSH agents, GitHub credentials, production configs, or the host home directory by default. Codex-inside-container mode uses a project-specific Codex home volume and requires the user to run `scripts/sandbox/codex-login` deliberately. The scripts must not capture device codes or tokens and must not inspect Codex credential files.
+
+Rootless Podman reduces host filesystem risk, but untrusted code can still modify mounted project files and can misuse network access if networking is available. Generated docs prohibit `--dangerously-bypass-approvals-and-sandbox`, host full-access as the default permission answer, production secret mounts, deployment, rsync to production, GitHub pushes, and remote resource creation without explicit approval.
+
+Host Codex session/history import is not automatic. Generated projects prefer a no-secrets handoff summary in `docs/CODEX-HANDOFF.md` over copying raw session transcripts or auth files into the container.
+
 ### Local-model overreach
 
 Ollama support is limited to a local readiness check and warning-rich handoff prompt. The starter inspects installed model metadata and refuses inadvisable handoff prompts unless the user passes `--override`. It never pulls models, installs packages, sends repository content to Ollama, executes local-model output, rewrites Codex configuration, or changes project metadata away from Codex.

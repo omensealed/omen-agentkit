@@ -21,6 +21,7 @@ from .generator import GenerationReport, generate_project, validate_project
 from .idea_prompts import MODES as IDEA_PROMPT_MODES
 from .idea_prompts import result_to_json, write_idea_prompt
 from .models import ProjectConfig
+from .sandbox import doctor_lines as sandbox_doctor_lines
 from .toolchains import TOOLCHAINS, normalize_language, unique
 from .wizard import CancelledByUser, run_wizard, slugify
 
@@ -96,6 +97,10 @@ def _validate_noninteractive_config(config: ProjectConfig, *, allow_custom_comma
         raise ValueError("project_mode must be new or existing.")
     if config.database not in {"none", "sqlite", "mariadb", "postgresql", "existing", "undecided"}:
         raise ValueError("database must be none, sqlite, mariadb, postgresql, existing, or undecided.")
+    if config.sandbox.engine != "podman":
+        raise ValueError("sandbox.engine must be podman.")
+    if config.sandbox.mode not in {"none", "toolchain", "codex", "files-only"}:
+        raise ValueError("sandbox.mode must be none, toolchain, codex, or files-only.")
 
     for value in _recursive_strings(config.to_dict()):
         if SENSITIVE_RE.search(value):
@@ -1001,6 +1006,13 @@ def command_codex_uninstall_skill(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_sandbox_doctor(args: argparse.Namespace) -> int:
+    code, lines = sandbox_doctor_lines(Path(args.project))
+    for line in lines:
+        _print(line)
+    return code
+
+
 def _github_remote(root: Path, config: ProjectConfig) -> int:
     visibility = "private" if config.github_remote == "create-private" else "public"
     if shutil.which("gh") is None:
@@ -1072,6 +1084,13 @@ def command_new(args: argparse.Namespace) -> int:
     _print("  ./scripts/bootstrap-dev.sh        # review only")
     _print("  ./scripts/bootstrap-dev.sh --install  # installs after sudo approval")
     _print("  ./scripts/check.sh")
+    if config.sandbox.enabled:
+        _print("  scripts/sandbox/doctor")
+        _print("  scripts/sandbox/build")
+        _print("  scripts/sandbox/check")
+        if config.sandbox.codex_inside_container:
+            _print("  scripts/sandbox/codex-login")
+            _print("  scripts/sandbox/codex")
     _print("  ./START_AGENT.sh")
 
     if launch:
@@ -1188,6 +1207,15 @@ def command_example(args: argparse.Namespace) -> int:
         "tests": ["unit", "integration"],
         "browser_tests": False,
         "codex_agentkit_skill": True,
+        "sandbox": {
+            "enabled": True,
+            "engine": "podman",
+            "mode": "toolchain",
+            "codex_inside_container": False,
+            "rootless_required": True,
+            "install_agentkit_skill": True,
+            "first_run_autonomous_prompt": False,
+        },
     }
     text = json.dumps(example, indent=2) + "\n"
     if args.output:
@@ -1343,6 +1371,13 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall_skill_parser.add_argument("project", nargs="?", default=".")
     uninstall_skill_parser.add_argument("--force", action="store_true", help="Remove a non-managed agentkit skill after backing it up.")
     uninstall_skill_parser.set_defaults(func=command_codex_uninstall_skill)
+
+    sandbox = sub.add_parser("sandbox", help="Inspect generated rootless Podman sandbox support.")
+    sandbox_sub = sandbox.add_subparsers(dest="sandbox_command", required=True)
+
+    sandbox_doctor = sandbox_sub.add_parser("doctor", help="Check generated sandbox readiness without changing host setup.")
+    sandbox_doctor.add_argument("project", nargs="?", default=".")
+    sandbox_doctor.set_defaults(func=command_sandbox_doctor)
 
     example = sub.add_parser("example-answers", help="Print or write an answers JSON example.")
     example.add_argument("--output")

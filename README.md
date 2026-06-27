@@ -16,6 +16,7 @@ A generated workspace can include:
 - `START_AGENT.sh` plus Codex setup/status helpers;
 - build, run, lint, test, and aggregate check scripts appropriate to the selected toolchains;
 - optional repo-local `$agentkit` Codex skill files under `.agents/skills/agentkit/`;
+- optional rootless Podman sandbox files for containerized build/test work and, when explicitly selected, Codex inside a project-scoped container;
 - optional local Git initialization and deferred GitHub Actions workflow;
 - safe handling for existing repositories through proposals and timestamped backups instead of silent replacement.
 
@@ -49,7 +50,7 @@ The interactive wizard walks through:
 3. **Technology choice** — manually choose languages and persistence, or ask Codex for a read-only structured recommendation and review it before accepting anything.
 4. **Data and security** — database type, network access, accounts, personal data, payments, existing schemas, and project-specific risks.
 5. **Quality workflow** — tests, browser testing, build/lint commands, local Git, and deferred GitHub Actions/repository setup after local checks prove useful.
-6. **CachyOS sandbox** — generate reviewable `pacman` package guidance and project-local commands; no package installation happens without explicit approval.
+6. **CachyOS and sandboxing** — generate reviewable `pacman` package guidance and optional rootless Podman project sandbox files; no package installation or Podman command runs during generation.
 7. **Handoff** — validate the generated workspace and optionally launch Codex with `FIRST_PROMPT.md`.
 
 The local fallback recommendation remains available when Codex is absent or cannot return valid structured advice.
@@ -137,6 +138,9 @@ agent-starter idea-prompt --from-codex --arguments "implement Add SQLite save/lo
 agent-starter codex install-agentkit-skill /path/to/project
 agent-starter codex skill-status /path/to/project
 
+# Check generated rootless Podman sandbox readiness without installing anything
+agent-starter sandbox doctor /path/to/project
+
 # Add task-specific guidance
 agent-starter prompt /path/to/project --template bug --request "Fix CSV import crash"
 
@@ -214,6 +218,25 @@ $agentkit plan Describe the project change here
 ```
 
 The skill does not send keystrokes, run a daemon, modify `~/.codex/config.toml`, contact OpenAI or GitHub by itself, or bypass approvals. It tells Codex to run the local prompt builder, `agent-starter idea-prompt`, read the generated file under `docs/agent-prompts/`, and treat that generated prompt as the task brief. Use `agent-starter codex skill-status`, `update-agentkit-skill`, and `uninstall-agentkit-skill` to inspect or manage the versioned skill sidecar. Restart Codex if a newly installed or updated skill does not appear immediately.
+
+## Optional rootless Podman sandbox
+
+New local projects can include a rootless Podman sandbox. The default sandbox mode keeps Codex on the host and runs project build/test/toolchain commands in a project container. An explicit Codex-inside-container mode generates project-scoped Codex launch scripts and a project-specific Codex home volume.
+
+Generated sandbox files live under `.agent-starter/sandbox/` and `scripts/sandbox/`. They do not mount host `~/.codex`, `~/.ssh`, browser profiles, GitHub credentials, production configs, or the host home directory by default. Container auth uses `scripts/sandbox/codex-login` only when the user deliberately runs it. The starter recommends handoff summaries instead of copying raw Codex sessions or auth files into containers.
+
+Useful generated commands:
+
+```bash
+scripts/sandbox/doctor
+scripts/sandbox/build
+scripts/sandbox/check
+scripts/sandbox/shell
+scripts/sandbox/codex-login  # only when Codex-inside-container mode was explicitly selected
+scripts/sandbox/codex
+```
+
+Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
 
 If a user wants to attempt continuation with a local Ollama model, check the installed models first:
 

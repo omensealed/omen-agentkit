@@ -108,6 +108,41 @@ def _project_snapshot(config: ProjectConfig | None) -> str:
     )
 
 
+def _sandbox_guidance(config: ProjectConfig | None) -> str:
+    if config is None or not config.sandbox.enabled:
+        return (
+            "## Sandbox guidance\n\n"
+            "- No Agent Kit sandbox metadata was found; use the repository's documented local scripts and approval boundaries.\n\n"
+        )
+    lines = [
+        "## Sandbox guidance",
+        "",
+        f"- Agent Kit sandbox mode: `{config.sandbox.mode}` using rootless Podman.",
+        "- Prefer generated sandbox scripts for build and test work when they exist.",
+        "- Use `scripts/sandbox/doctor` before assuming the sandbox is ready.",
+        "- Use `scripts/sandbox/build` to build the project container when needed.",
+        "- Use `scripts/sandbox/check` for full verification when available, after focused tests.",
+        "- Use host scripts only when project docs say host execution is required.",
+        "- Do not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory.",
+        "- Do not use host `danger-full-access` or `--dangerously-bypass-approvals-and-sandbox` as an answer to sandbox friction.",
+    ]
+    if config.database in {"mariadb", "postgresql"}:
+        lines.append("- Use `scripts/sandbox/db-up` for the local dev database and `scripts/sandbox/db-down` to stop it without deleting data.")
+    if config.project_type in {"web", "api"}:
+        lines.append("- Use `scripts/sandbox/web` for local web/API serving when generated; bind host access to `127.0.0.1` only.")
+    if config.project_type == "game" or "godot" in config.languages:
+        lines.append("- Use `scripts/sandbox/headless-test` for container-safe game checks and `scripts/playtest-host` for real rendering/audio/controller playtesting.")
+    if config.sandbox.codex_inside_container:
+        lines.extend(
+            [
+                "- Codex-inside-container mode uses a project-specific Codex home volume.",
+                "- Run `scripts/sandbox/codex-login` only as an explicit user action; do not inspect or copy auth files.",
+                "- Use `scripts/sandbox/codex` or `scripts/sandbox/resume` for project-scoped container sessions.",
+            ]
+        )
+    return "\n".join(lines) + "\n\n"
+
+
 MODE_GUIDANCE: dict[str, tuple[str, ...]] = {
     "plan": (
         "Inspect and produce a concrete plan first.",
@@ -167,6 +202,7 @@ def build_prompt_body(*, mode: str, idea: str, root: Path, config: ProjectConfig
         f"{snapshot}\n\n"
         "## Mode-specific guidance\n\n"
         f"{guidance}\n\n"
+        f"{_sandbox_guidance(config)}"
         "## Work rules\n\n"
         "- Restate the requested idea before making changes.\n"
         "- Use the existing project stack, language, database choice, and documentation contract.\n"
@@ -174,7 +210,7 @@ def build_prompt_body(*, mode: str, idea: str, root: Path, config: ProjectConfig
         "- Make the smallest coherent change that satisfies the request.\n"
         "- Prefer existing project patterns and standard-library/local helpers over new dependencies.\n"
         "- Add or update tests when behavior changes.\n"
-        "- Run focused tests first, then `./scripts/check.sh` when available.\n"
+        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it, otherwise `./scripts/check.sh` when available.\n"
         "- Update `docs/11-IMPLEMENTATION-NOTES.md` with objective, files changed, commands run, results, decisions, implications, unresolved problems, and next step.\n"
         "- Update `docs/09-PROGRESS.md` only when the project state actually changed; if this project uses `docs/10-PROGRESS.md` as its progress ledger, update that file instead.\n"
         "- Update `docs/10-DECISIONS.md` only for durable architecture, dependency, data, or workflow decisions.\n"

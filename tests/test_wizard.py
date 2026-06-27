@@ -7,6 +7,16 @@ from agent_starter.wizard import Prompter, build_advisor_prompt, run_wizard, slu
 
 
 class WizardHelpersTests(unittest.TestCase):
+    def wizard_input(self, answers: list[str]):
+        iterator = iter(answers)
+
+        def _input(prompt: str) -> str:
+            if prompt.startswith("After generation, launch Codex"):
+                return "n"
+            return next(iterator, "")
+
+        return _input
+
     def test_slugify(self) -> None:
         self.assertEqual(slugify(" My Cool_Game! "), "my-cool-game")
         self.assertEqual(slugify("***"), "new-project")
@@ -59,13 +69,12 @@ class WizardHelpersTests(unittest.TestCase):
                 "",
                 "",
                 "",
-                "n",
             ]
         )
         output: list[str] = []
         result = run_wizard(
             initial_path="./wizard-project-test",
-            input_fn=lambda _: next(answers),
+            input_fn=self.wizard_input(list(answers)),
             output_fn=output.append,
             skip_agent_setup=True,
         )
@@ -80,6 +89,96 @@ class WizardHelpersTests(unittest.TestCase):
         self.assertTrue(any("License quick guide" in line for line in output))
         self.assertTrue(any("AGPL has network-service source-sharing obligations" in line for line in output))
         self.assertTrue(any("Local-first recommendation" in line for line in output))
+
+    def test_new_project_defaults_to_toolchain_sandbox(self) -> None:
+        answers = iter(
+            [
+                "new",
+                "Sandbox Wizard",
+                "",
+                "",
+                "Build a small CLI program.",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "manual",
+                "python",
+                "none",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
+        result = run_wizard(
+            initial_path="./sandbox-wizard-test",
+            input_fn=self.wizard_input(list(answers)),
+            output_fn=lambda _line: None,
+            skip_agent_setup=True,
+        )
+        self.assertTrue(result.config.sandbox.enabled)
+        self.assertEqual(result.config.sandbox.mode, "toolchain")
+        self.assertFalse(result.config.sandbox.codex_inside_container)
+        self.assertFalse(result.config.sandbox.first_run_autonomous_prompt)
+
+    def test_existing_project_defaults_to_no_sandbox(self) -> None:
+        answers = iter(
+            [
+                "existing",
+                ".",
+                "Existing Project",
+                "Renovate safely.",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "manual",
+                "python",
+                "none",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
+        result = run_wizard(
+            initial_path=".",
+            input_fn=self.wizard_input(list(answers)),
+            output_fn=lambda _line: None,
+            skip_agent_setup=True,
+        )
+        self.assertFalse(result.config.sandbox.enabled)
+        self.assertEqual(result.config.sandbox.mode, "none")
 
     def test_prompter_rejects_credential_like_input(self) -> None:
         answers = iter(["password=hunter2", "safe note"])
