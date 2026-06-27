@@ -6,7 +6,7 @@
 - [x] Preserve interactive `scripts/sandbox/shell` behavior.
 - [x] Run final full source check after version bump.
 - [x] Build and verify patch release archive/checksum locally.
-- [ ] Tag and publish patch release if final archive check passes.
+- [x] Tag and publish patch release if final archive check passes.
 
 ## 0.4.1 patch release prep
 
