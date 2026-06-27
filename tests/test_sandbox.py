@@ -80,6 +80,15 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("Do not mount host secrets", docs)
             self.assertNotIn("codex --sandbox danger-full-access", docs)
 
+    def test_ephemeral_toolchain_commands_do_not_reuse_fixed_container_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            for relative in ("scripts/sandbox/exec", "scripts/sandbox/check", "scripts/sandbox/shell"):
+                text = (root / relative).read_text(encoding="utf-8")
+                self.assertNotIn("--name agentkit-sandbox-test-dev", text)
+                self.assertIn("podman run --rm -it", text)
+
     def test_codex_mode_generates_codex_scripts_and_project_volume(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "project"

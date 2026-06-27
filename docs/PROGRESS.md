@@ -1,5 +1,12 @@
 # Progress
 
+## 0.4.1 patch release prep
+
+- [x] Run manual rootless Podman smoke test on a disposable generated sandbox project.
+- [x] Fix generated ephemeral sandbox command container-name collision found by smoke testing.
+- [x] Run final full source check after version bump.
+- [ ] Build, verify, tag, and publish patch release if checks pass.
+
 ## 0.4.0 local release prep
 
 - [x] Add repo-local `$agentkit` skill workflow and optional rootless Podman sandbox support.

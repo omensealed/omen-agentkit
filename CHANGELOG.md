@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.1 — 2026-06-27
+
+- Fixed generated rootless Podman toolchain `shell`, `exec`, and `check` helpers so ephemeral commands do not reuse a fixed container name and collide after parallel or interrupted runs.
+
 ## 0.4.0 — 2026-06-27
 
 - Added `agent-starter idea-prompt` for local prompt-file generation from short `$agentkit` requests.

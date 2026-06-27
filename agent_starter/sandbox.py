@@ -117,7 +117,6 @@ def _script_prelude(config: ProjectConfig) -> str:
 
         run_project_container() {{
           podman run --rm -it \\
-            --name {shlex.quote('agentkit-' + project_id(config) + '-dev')} \\
             --volume "$ROOT:/workspace:Z" \\
             --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
             --workdir /workspace \\
