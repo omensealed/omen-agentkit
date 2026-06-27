@@ -36,6 +36,32 @@ Unknown keys are rejected. Common credential-looking values are rejected. Custom
 - `use_ai_advisor`: whether Codex stack advice was requested.
 - `codex_agentkit_skill`: whether to generate the repo-local `$agentkit` Codex skill. Defaults to `true` for backward compatibility and beginner convenience.
 
+## Sandbox fields
+
+`sandbox` is optional. Old answers files that omit it still load and default to no generated Podman sandbox.
+
+```json
+"sandbox": {
+  "enabled": true,
+  "engine": "podman",
+  "mode": "toolchain",
+  "codex_inside_container": false,
+  "rootless_required": true,
+  "install_agentkit_skill": true,
+  "first_run_autonomous_prompt": false
+}
+```
+
+- `enabled`: generate rootless Podman sandbox files.
+- `engine`: must be `podman`.
+- `mode`: `none`, `toolchain`, `codex`, or `files-only`.
+- `codex_inside_container`: when true, generate project-scoped Codex container launch/login/resume scripts and use a project-specific Codex home volume.
+- `rootless_required`: records that the generated sandbox expects rootless Podman.
+- `install_agentkit_skill`: records whether sandbox-aware `$agentkit` prompt flow should be available with the project.
+- `first_run_autonomous_prompt`: generates `FIRST_RUN_AUTONOMOUS.md`; keep this false unless the workspace is disposable/local and the user explicitly wants it.
+
+The sandbox does not install packages, run Podman, run Codex login, mount host `~/.codex`, mount host `~/.ssh`, or copy host sessions during generation.
+
 ## Git, test, and toolchain fields
 
 - `git_enabled`: initialize a local repository when one does not exist.

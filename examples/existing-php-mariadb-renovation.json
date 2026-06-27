@@ -50,5 +50,14 @@
     "security",
     "end-to-end"
   ],
-  "browser_tests": true
+  "browser_tests": true,
+  "sandbox": {
+    "enabled": false,
+    "engine": "podman",
+    "mode": "none",
+    "codex_inside_container": false,
+    "rootless_required": true,
+    "install_agentkit_skill": true,
+    "first_run_autonomous_prompt": false
+  }
 }

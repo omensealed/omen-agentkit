@@ -38,6 +38,7 @@ The wizard asks whether this is a new project or an existing codebase, then coll
 - database/persistence needs, including SQLite, MariaDB, PostgreSQL, an existing database, no database, or an undecided choice;
 - network, account, personal-data, payment, and security constraints;
 - test layers, browser testing, local Git, and optional later GitHub Actions/repository setup;
+- whether to generate optional rootless Podman sandbox files for containerized project checks;
 - initial license choice, including MIT, Apache-2.0, BSD-3-Clause, GPL-3.0-or-later, AGPL-3.0-or-later, MPL-2.0, or undecided; the wizard shows a short permissive/copyleft guide before this choice;
 - extra trusted CachyOS packages and unresolved questions.
 
@@ -92,7 +93,30 @@ Run the local quality gate:
 ./scripts/check.sh
 ```
 
-## 7. Authorize Codex
+## 7. Use the optional Podman sandbox
+
+If you enabled the rootless Podman sandbox, inspect it before relying on it:
+
+```bash
+agent-starter sandbox doctor .
+scripts/sandbox/doctor
+scripts/sandbox/build
+scripts/sandbox/check
+```
+
+The default sandbox mode keeps Codex on the host and runs project build/test/toolchain work in a container. If you explicitly selected Codex-inside-container mode, use:
+
+```bash
+scripts/sandbox/codex-login
+scripts/sandbox/codex
+scripts/sandbox/resume
+```
+
+`codex-login` is an explicit user action and stores Codex state in a project-specific container home volume. The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory by default. Prefer `docs/agent-prompts/create-container-handoff.md` to create a no-secrets handoff summary instead of copying raw session transcripts.
+
+Rootless Podman reduces host filesystem risk, but container commands can still change mounted project files and can misuse network access when networking is available. Do not use host full-access as the default answer to permission friction, and do not deploy, push, rsync production targets, or mount real secrets without explicit approval.
+
+## 8. Authorize Codex
 
 From the installed starter:
 
@@ -116,7 +140,7 @@ From a generated project, the equivalent helpers are:
 
 All account interaction belongs to the official Codex CLI. Confirm in that flow that you selected the intended ChatGPT account.
 
-## 8. Start implementation
+## 9. Start implementation
 
 Launch from the generated project:
 
@@ -142,7 +166,7 @@ agent-starter launch /path/to/project --kickoff
 
 The initial prompt tells Codex to inspect the existing repository, verify the project hypothesis, establish or repair the test baseline, update project docs, work the first safe phase, and record an implementation note.
 
-## 9. Continue safely
+## 10. Continue safely
 
 At every meaningful phase:
 
@@ -186,7 +210,7 @@ agent-starter prompt /path/to/project --request "Add CSV import" --output NEXT_P
 
 The generated prompt tells Codex to read the project instructions and current progress, inspect the actual code, work in a small tested phase, update the implementation notes and handoff, and avoid privileged, destructive, credential, publish, deploy, and remote-push actions without explicit approval. Interactive mode asks about task type, recent changes, affected surfaces, risk, and expected verification. Named templates are `feature`, `bug`, `cleanup`, `docs`, `test-baseline`, and `release-prep`.
 
-## 10. Check GitHub readiness
+## 11. Check GitHub readiness
 
 Before creating a GitHub remote, enabling GitHub Actions, or pushing, run:
 
@@ -196,7 +220,7 @@ agent-starter github-ready /path/to/project
 
 The command validates the generated workspace, runs `./scripts/check.sh` unless `--skip-check` is supplied, checks local Git cleanliness, verifies AI-local artifact ignores, and inspects the CI workflow when one exists. It does not contact GitHub, create a repository, push, install packages, or deploy anything.
 
-## 11. Plan a local mirror
+## 12. Plan a local mirror
 
 To review a local or SSH source mirror command without running it:
 
@@ -206,7 +230,7 @@ agent-starter rsync-plan /path/to/project /path/to/project-mirror
 
 The plan uses `.agent-starter/rsync-excludes` to skip credentials, local databases, caches, Codex session files, prompt drafts, starter proposals/backups, and `.git` history. Add `--run` only after reviewing the command and target. Add `--delete` only when target-side deletion is intended.
 
-## 12. Check a local Ollama handoff
+## 13. Check a local Ollama handoff
 
 Codex remains the default and supported agent path. If you want to experiment with a local Ollama model for a later focused task, check whether the installed model is a plausible handoff target first:
 

@@ -42,5 +42,14 @@
     "unit",
     "integration"
   ],
-  "browser_tests": false
+  "browser_tests": false,
+  "sandbox": {
+    "enabled": true,
+    "engine": "podman",
+    "mode": "toolchain",
+    "codex_inside_container": false,
+    "rootless_required": true,
+    "install_agentkit_skill": true,
+    "first_run_autonomous_prompt": false
+  }
 }

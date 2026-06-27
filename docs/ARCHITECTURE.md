@@ -10,9 +10,12 @@ The kit is a single Python 3.11+ package with no runtime dependencies outside th
 - `models.py` contains serializable project configuration and advisor-result dataclasses.
 - `toolchains.py` maps selected languages/databases to CachyOS packages, known commands, ignore entries, and CI setup.
 - `templates.py` renders the generated project contract, numbered docs, shell helpers, and workflow.
+- `sandbox.py` renders optional rootless Podman sandbox files and read-only sandbox diagnostics.
 - `generator.py` verifies safe paths, renders the file map, writes atomically, preserves conflicts/backups, optionally initializes Git, and validates the result.
 
 `ollama-check` is an assessment-only local-model handoff gate. It inspects installed Ollama model metadata and can generate a warning-rich handoff prompt, but it does not add an alternate agent adapter, generated launcher, authentication path, or Codex configuration rewrite.
+
+Optional rootless Podman sandbox support is generated project infrastructure, not an orchestration layer. It can create project-scoped toolchain/test scripts and explicit Codex-inside-container launch helpers, but it does not run Podman during generation, install host packages, mount host credentials, copy Codex sessions, or change the Codex-only agent invariant.
 
 ## Data flow
 
@@ -47,6 +50,8 @@ The `primary_agent` metadata field is a fixed `codex` invariant, not a client-se
 Untrusted inputs include terminal answers, answers JSON, existing files, model output, project paths, and tool output. Privileged or external boundaries include `sudo pacman`, Codex OAuth/browser handling, GitHub network operations, and Codex tool execution inside a generated project.
 
 Authority is minimized by generating and validating before launch, requiring explicit approval for system installation, using Codex sandbox/approval settings, keeping advice calls read-only, and delegating all account credentials to the official client.
+
+When enabled, the rootless Podman sandbox adds a second containment layer for project toolchain work. It still treats the project bind mount as writable user data, keeps host secrets unmounted by default, and documents that containers reduce host filesystem risk without making untrusted code safe.
 
 ## Architecture decision — local model handoff gate
 
