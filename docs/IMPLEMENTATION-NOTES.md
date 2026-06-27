@@ -485,3 +485,13 @@ This is the starter kit’s durable engineering journal. Add a dated entry after
 - Unresolved problems: The noninteractive `podman run -it` warning is noisy but non-fatal; a later polish pass can split interactive and noninteractive sandbox helpers.
 - Follow-up verification: `./scripts/check.sh` passed after the 0.4.1 version bump and smoke-test fix. The check ran 86 tests, shell syntax checks, source-tree CLI version check reporting `agent-starter 0.4.1`, generation smoke test creating 58 files, generated project `scripts/check.sh`, and user-local install/uninstall smoke test.
 - Exact next step: Commit the 0.4.1 patch prep, then build and verify a patch release archive.
+
+## 2026-06-27T21:38:01Z — 0.4.1 archive verification
+
+- Objective/phase: Build and verify local 0.4.1 patch release artifacts after the Podman smoke-test fix.
+- Files/subsystems changed: `docs/PROGRESS.md` and this note. Release artifacts were written under ignored `dist/` and mirrored under `/tmp`.
+- Behavior/design decisions: Built the release archive from commit `009e704` with `git archive`, generated a SHA-256 sidecar, copied both artifacts to `/tmp`, extracted the archive into `/tmp/agentkit-0.4.1-extract.8hrbD4`, and ran the extracted source check.
+- Commands and tests run: `git archive --format=tar.gz --prefix=cli-ai-agent-starter-kit-codex-0.4.1/ -o dist/cli-ai-agent-starter-kit-codex-0.4.1.tar.gz HEAD`; `sha256sum dist/cli-ai-agent-starter-kit-codex-0.4.1.tar.gz > dist/cli-ai-agent-starter-kit-codex-0.4.1.tar.gz.sha256`; copied archive and checksum to `/tmp`; `sha256sum -c dist/cli-ai-agent-starter-kit-codex-0.4.1.tar.gz.sha256`; extracted the archive; ran extracted `./scripts/check.sh`.
+- Results: Checksum verification passed. Extracted archive `./scripts/check.sh` passed with 86 tests, shell syntax checks, source-tree CLI version check reporting `agent-starter 0.4.1`, generation smoke test creating 58 files, generated project `scripts/check.sh`, and user-local install/uninstall smoke test. Initial archive checksum before adding this note was `48ccfcda1a6902a2ebb4b51d2f67d426ec96cc32cbc0ca938a3e73eb5f42917e`; the final archive must be rebuilt after this note so the checksum sidecar reflects the exact final source.
+- Security/data/performance/UX implications: Local archive handoff only. No GitHub push, GitHub release, package publication, deployment, Codex login, OpenAI request, package installation, `sudo`, Podman build/run, rsync, or credential inspection was performed in this archive-verification step.
+- Exact next step: Commit this archive-verification record, rebuild the 0.4.1 archive from that commit, rerun extracted archive verification, then tag and publish if clean.

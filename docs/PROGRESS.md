@@ -5,7 +5,8 @@
 - [x] Run manual rootless Podman smoke test on a disposable generated sandbox project.
 - [x] Fix generated ephemeral sandbox command container-name collision found by smoke testing.
 - [x] Run final full source check after version bump.
-- [ ] Build, verify, tag, and publish patch release if checks pass.
+- [x] Build and verify patch release archive/checksum locally.
+- [ ] Tag and publish patch release if final archive check passes.
 
 ## 0.4.0 local release prep
 
