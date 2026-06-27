@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.2 — 2026-06-27
+
+- Changed generated rootless Podman toolchain `exec` and `check` helpers to avoid allocating a TTY in noninteractive runs, removing Podman's non-TTY warning while keeping `scripts/sandbox/shell` interactive.
+
 ## 0.4.1 — 2026-06-27
 
 - Fixed generated rootless Podman toolchain `shell`, `exec`, and `check` helpers so ephemeral commands do not reuse a fixed container name and collide after parallel or interrupted runs.

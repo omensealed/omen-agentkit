@@ -80,14 +80,24 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("Do not mount host secrets", docs)
             self.assertNotIn("codex --sandbox danger-full-access", docs)
 
-    def test_ephemeral_toolchain_commands_do_not_reuse_fixed_container_name(self) -> None:
+    def test_noninteractive_toolchain_commands_do_not_request_tty_or_fixed_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "project"
             generate_project(self.make_config(root))
-            for relative in ("scripts/sandbox/exec", "scripts/sandbox/check", "scripts/sandbox/shell"):
+            for relative in ("scripts/sandbox/exec", "scripts/sandbox/check"):
                 text = (root / relative).read_text(encoding="utf-8")
                 self.assertNotIn("--name agentkit-sandbox-test-dev", text)
-                self.assertIn("podman run --rm -it", text)
+                self.assertIn("podman run --rm \\", text)
+                self.assertNotIn("podman run --rm -it", text)
+
+    def test_sandbox_shell_remains_interactive_without_fixed_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            text = (root / "scripts/sandbox/shell").read_text(encoding="utf-8")
+            self.assertNotIn("--name agentkit-sandbox-test-dev", text)
+            self.assertIn("podman run --rm -it", text)
+            self.assertIn("run_interactive_project_container /bin/sh", text)
 
     def test_codex_mode_generates_codex_scripts_and_project_volume(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

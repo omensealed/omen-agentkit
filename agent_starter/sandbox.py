@@ -116,7 +116,7 @@ def _script_prelude(config: ProjectConfig) -> str:
         DB_VOLUME={shlex.quote(volume_name(config, "db_data"))}
 
         run_project_container() {{
-          podman run --rm -it \\
+          podman run --rm \\
             --volume "$ROOT:/workspace:Z" \\
             --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
             --workdir /workspace \\
@@ -167,7 +167,20 @@ def build_script(config: ProjectConfig) -> str:
 
 
 def shell_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + "\nrun_project_container /bin/sh\n"
+    return _script_prelude(config) + clean(
+        """
+
+        run_interactive_project_container() {
+          podman run --rm -it \\
+            --volume "$ROOT:/workspace:Z" \\
+            --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
+            --workdir /workspace \\
+            "$IMAGE" "$@"
+        }
+
+        run_interactive_project_container /bin/sh
+        """
+    )
 
 
 def exec_script(config: ProjectConfig) -> str:
