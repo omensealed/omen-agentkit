@@ -35,6 +35,8 @@ SANDBOX_EXECUTABLES: tuple[str, ...] = (
 )
 
 CACHYOS_PODMAN_COMMAND = "sudo pacman -S --needed podman passt fuse-overlayfs"
+SANDBOX_ENV_MARKER = "AGENTKIT_INSIDE_SANDBOX=1"
+HOST_SIDE_SANDBOX_MESSAGE = "This is a host-side sandbox command. Exit the container and run it from the project root on the host."
 
 
 def project_id(config: ProjectConfig) -> str:
@@ -103,6 +105,34 @@ def containerfile(config: ProjectConfig) -> str:
     )
 
 
+def _inside_sandbox_helper() -> str:
+    return clean(
+        """
+        inside_agentkit_sandbox() {
+          test "${AGENTKIT_INSIDE_SANDBOX:-}" = "1" && return 0
+          test -f /run/.containerenv && return 0
+          test -f /.dockerenv && return 0
+          return 1
+        }
+        """
+    )
+
+
+def _host_side_guard() -> str:
+    return (
+        _inside_sandbox_helper()
+        + "\n"
+        + clean(
+            f"""
+            if inside_agentkit_sandbox; then
+              printf '%s\\n' {shlex.quote(HOST_SIDE_SANDBOX_MESSAGE)}
+              exit 2
+            fi
+            """
+        )
+    )
+
+
 def _script_prelude(config: ProjectConfig) -> str:
     return clean(
         f"""
@@ -115,8 +145,11 @@ def _script_prelude(config: ProjectConfig) -> str:
         CODEX_HOME_VOLUME={shlex.quote(volume_name(config, "codex_home"))}
         DB_VOLUME={shlex.quote(volume_name(config, "db_data"))}
 
+        {_inside_sandbox_helper()}
+
         run_project_container() {{
           podman run --rm \\
+            --env AGENTKIT_INSIDE_SANDBOX=1 \\
             --volume "$ROOT:/workspace:Z" \\
             --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
             --workdir /workspace \\
@@ -132,6 +165,7 @@ def doctor_script(config: ProjectConfig) -> str:
         #!/usr/bin/env sh
         set -eu
         ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+        {_host_side_guard()}
         printf '%s\\n' 'Agent Kit rootless Podman sandbox doctor'
         if ! command -v podman >/dev/null 2>&1; then
           printf '%s\\n' '[missing] podman'
@@ -161,6 +195,7 @@ def build_script(config: ProjectConfig) -> str:
         #!/usr/bin/env sh
         set -eu
         ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+        {_host_side_guard()}
         podman build -t {shlex.quote(image_name(config))} -f "$ROOT/.agent-starter/sandbox/Containerfile" "$ROOT"
         """
     )
@@ -170,8 +205,13 @@ def shell_script(config: ProjectConfig) -> str:
     return _script_prelude(config) + clean(
         """
 
+        if inside_agentkit_sandbox; then
+          exec /bin/sh
+        fi
+
         run_interactive_project_container() {
           podman run --rm -it \\
+            --env AGENTKIT_INSIDE_SANDBOX=1 \\
             --volume "$ROOT:/workspace:Z" \\
             --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
             --workdir /workspace \\
@@ -184,11 +224,34 @@ def shell_script(config: ProjectConfig) -> str:
 
 
 def exec_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + "\nrun_project_container \"$@\"\n"
+    return _script_prelude(config) + clean(
+        """
+
+        if inside_agentkit_sandbox; then
+          if [ "$#" -eq 0 ]; then
+            printf '%s\\n' 'Already inside the Agent Kit sandbox. No command was provided.'
+            exit 2
+          fi
+          exec "$@"
+        fi
+
+        run_project_container "$@"
+        """
+    )
 
 
 def check_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + "\nrun_project_container ./scripts/check.sh\n"
+    return _script_prelude(config) + clean(
+        """
+
+        if inside_agentkit_sandbox; then
+          printf '%s\\n' 'Already inside the Agent Kit sandbox. Running ./scripts/check.sh directly.'
+          exec ./scripts/check.sh
+        fi
+
+        run_project_container ./scripts/check.sh
+        """
+    )
 
 
 def logs_script(config: ProjectConfig) -> str:
@@ -196,6 +259,7 @@ def logs_script(config: ProjectConfig) -> str:
         f"""
         #!/usr/bin/env sh
         set -eu
+        {_host_side_guard()}
         podman ps -a --filter name={shlex.quote('agentkit-' + project_id(config))}
         """
     )
@@ -206,6 +270,7 @@ def clean_script(config: ProjectConfig) -> str:
         f"""
         #!/usr/bin/env sh
         set -eu
+        {_host_side_guard()}
         printf '%s\\n' 'This removes stopped sandbox containers only. Volumes are preserved.'
         podman container prune --filter label=agentkit.project={shlex.quote(project_id(config))}
         printf '%s\\n' 'To remove project volumes manually, review:'
@@ -217,9 +282,15 @@ def clean_script(config: ProjectConfig) -> str:
 def codex_script(config: ProjectConfig) -> str:
     base = _script_prelude(config)
     run = (
+        'if inside_agentkit_sandbox; then\n'
+        "  printf '%s\\n' "
+        + shlex.quote(HOST_SIDE_SANDBOX_MESSAGE)
+        + "\n"
+        "  exit 2\n"
+        "fi\n"
         'podman run --rm -it --name agentkit-'
         + project_id(config)
-        + '-codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" '
+        + '-codex --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" '
         '--workdir /workspace '
         + shlex.quote(image_name(config))
         + ' codex --sandbox workspace-write --ask-for-approval on-request\n'
@@ -228,20 +299,35 @@ def codex_script(config: ProjectConfig) -> str:
 
 
 def codex_login_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + "\npodman run --rm -it --volume \"$ROOT:/workspace:Z\" --volume \"$CODEX_HOME_VOLUME:/home/codex:Z\" --workdir /workspace " + shlex.quote(image_name(config)) + " codex login --device-auth\n"
+    return (
+        _script_prelude(config)
+        + "\n"
+        + _host_side_guard()
+        + '\npodman run --rm -it --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" --workdir /workspace '
+        + shlex.quote(image_name(config))
+        + " codex login --device-auth\n"
+    )
 
 
 def resume_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + "\npodman run --rm -it --volume \"$ROOT:/workspace:Z\" --volume \"$CODEX_HOME_VOLUME:/home/codex:Z\" --workdir /workspace " + shlex.quote(image_name(config)) + " codex resume --last\n"
+    return (
+        _script_prelude(config)
+        + "\n"
+        + _host_side_guard()
+        + '\npodman run --rm -it --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" --workdir /workspace '
+        + shlex.quote(image_name(config))
+        + " codex resume --last\n"
+    )
 
 
 def codex_exec_script(config: ProjectConfig) -> str:
-    return _script_prelude(config) + clean(
+    return _script_prelude(config) + "\n" + _host_side_guard() + clean(
         f"""
 
         PROMPT_FILE=${{1:-FIRST_RUN_AUTONOMOUS.md}}
         test -f "$ROOT/$PROMPT_FILE"
         podman run --rm -i \\
+          --env AGENTKIT_INSIDE_SANDBOX=1 \\
           --volume "$ROOT:/workspace:Z" \\
           --volume "$CODEX_HOME_VOLUME:/home/codex:Z" \\
           --workdir /workspace \\
@@ -283,6 +369,7 @@ def db_scripts(config: ProjectConfig) -> dict[str, str]:
         f"""
         #!/usr/bin/env sh
         set -eu
+        {_host_side_guard()}
         test -f .env.sandbox || cp .env.sandbox.example .env.sandbox
         podman volume exists {shlex.quote(volume)} || podman volume create {shlex.quote(volume)}
         . ./.env.sandbox
@@ -295,9 +382,15 @@ def db_scripts(config: ProjectConfig) -> dict[str, str]:
     )
     return {
         "scripts/sandbox/db-up": up,
-        "scripts/sandbox/db-down": f"#!/usr/bin/env sh\nset -eu\npodman stop {shlex.quote(name)} || true\n",
-        "scripts/sandbox/db-shell": f"#!/usr/bin/env sh\nset -eu\npodman exec -it {shlex.quote(name)} /bin/sh\n",
-        "scripts/sandbox/db-logs": f"#!/usr/bin/env sh\nset -eu\npodman logs -f {shlex.quote(name)}\n",
+        "scripts/sandbox/db-down": "#!/usr/bin/env sh\nset -eu\n"
+        + _host_side_guard()
+        + f"\npodman stop {shlex.quote(name)} || true\n",
+        "scripts/sandbox/db-shell": "#!/usr/bin/env sh\nset -eu\n"
+        + _host_side_guard()
+        + f"\npodman exec -it {shlex.quote(name)} /bin/sh\n",
+        "scripts/sandbox/db-logs": "#!/usr/bin/env sh\nset -eu\n"
+        + _host_side_guard()
+        + f"\npodman logs -f {shlex.quote(name)}\n",
         ".env.sandbox.example": env_sandbox_example(config),
     }
 
@@ -307,7 +400,16 @@ def web_script(config: ProjectConfig) -> dict[str, str]:
         return {}
     return {
         "scripts/sandbox/web": _script_prelude(config)
-        + "\nrun_project_container sh -lc './scripts/run.sh --host 127.0.0.1 || ./scripts/run.sh'\n"
+        + clean(
+            """
+
+            if inside_agentkit_sandbox; then
+              exec sh -lc './scripts/run.sh --host 127.0.0.1 || ./scripts/run.sh'
+            fi
+
+            run_project_container sh -lc './scripts/run.sh --host 127.0.0.1 || ./scripts/run.sh'
+            """
+        )
     }
 
 
@@ -315,7 +417,18 @@ def game_scripts(config: ProjectConfig) -> dict[str, str]:
     if config.project_type != "game" and "godot" not in config.languages:
         return {}
     return {
-        "scripts/sandbox/headless-test": _script_prelude(config) + "\nrun_project_container ./scripts/check.sh\n",
+        "scripts/sandbox/headless-test": _script_prelude(config)
+        + clean(
+            """
+
+            if inside_agentkit_sandbox; then
+              printf '%s\\n' 'Already inside the Agent Kit sandbox. Running ./scripts/check.sh directly.'
+              exec ./scripts/check.sh
+            fi
+
+            run_project_container ./scripts/check.sh
+            """
+        ),
         "scripts/playtest-host": "#!/usr/bin/env sh\nset -eu\nprintf '%s\\n' 'Run interactive GPU/audio/controller playtesting on the host with the project runtime.'\n./scripts/run.sh\n",
     }
 
@@ -327,6 +440,9 @@ def sandbox_readme(config: ProjectConfig) -> str:
 
         This sandbox uses rootless Podman with the project mounted at `/workspace`.
         It reduces host filesystem risk, but it is not a magic safety boundary: untrusted code can still damage mounted project files and misuse network access when networking is enabled.
+
+        Run `scripts/sandbox/*` wrappers from the host project root. Once you are already inside the container,
+        run project commands directly, such as `./scripts/check.sh`, instead of launching Podman again.
 
         The sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, GPG/SSH agents, GitHub credentials, production configs, or the host home directory by default.
         """
@@ -364,12 +480,26 @@ def sandbox_doc(config: ProjectConfig) -> str:
 
         ## Commands
 
+        Host-side sandbox wrappers:
+
         ```bash
         scripts/sandbox/doctor
         scripts/sandbox/build
         scripts/sandbox/check
         scripts/sandbox/shell
         ```
+
+        Inside-container project commands:
+
+        ```bash
+        ./scripts/check.sh
+        # or focused project commands such as npm test, python3 -m unittest, cargo test, or go test ./...
+        ```
+
+        Do not run host-side sandbox launchers from inside the container. The generated `check`, `exec`, `shell`,
+        `web`, and `headless-test` helpers detect container execution and run project commands directly. Host-only
+        helpers such as `build`, `codex`, `codex-login`, `resume`, `codex-exec`, and database service wrappers
+        refuse to run inside the container instead of attempting nested Podman.
 
         If the sandbox was requested for build/test work, do not silently fall back to host build/test commands
         when `doctor`, `build`, or `check` fails. Record the exact failure and either stop with
@@ -409,7 +539,8 @@ def autonomous_prompt(config: ProjectConfig) -> str:
 
         - Run `scripts/sandbox/doctor` before implementation work that depends on build/test/toolchain commands.
         - Run `scripts/sandbox/build` before relying on containerized checks.
-        - Use `scripts/sandbox/check` for full verification.
+        - If this Codex session is running on the host, use `scripts/sandbox/check` for full verification.
+        - If this Codex session is already inside the container, run `./scripts/check.sh` and focused project commands directly; do not run host-side `scripts/sandbox/*` launchers from inside the container.
         - Do not silently fall back to host build/test commands if `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails.
         - If the sandbox is unavailable, record the exact failure and stop with `BLOCKED_ENVIRONMENT` unless the human explicitly approves a host-only fallback.
         - Do not install host packages.
@@ -439,11 +570,13 @@ def handoff_prompt(config: ProjectConfig) -> str:
         - tests and commands run with results;
         - known failures or blockers;
         - next step.
+        - whether the next session is expected to run on the host or already inside the container.
 
         Rules:
 
         - Do not include OAuth tokens, API keys, cookies, passwords, device codes, SSH keys, browser profile paths, or credential file contents.
         - Do not copy raw Codex session transcripts.
+        - Do not tell an inside-container session to run host-side `scripts/sandbox/*` launchers; use direct project commands such as `./scripts/check.sh`.
         - Do not reference host-only paths unless needed to explain a migration issue.
         - Prefer paths relative to the project root.
         - Keep the handoff concise enough for a new session to read before continuing.

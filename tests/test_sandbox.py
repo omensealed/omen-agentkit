@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,9 @@ from unittest import mock
 from agent_starter.generator import generate_project
 from agent_starter.models import ProjectConfig, SandboxConfig
 from agent_starter.sandbox import doctor_lines
+
+
+HOST_SIDE_MESSAGE = "This is a host-side sandbox command. Exit the container and run it from the project root on the host."
 
 
 class SandboxGenerationTests(unittest.TestCase):
@@ -70,6 +75,8 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", combined)
             self.assertNotIn("-v $HOME", combined)
             self.assertNotIn("--volume $HOME", combined)
+            self.assertNotIn("/run/podman/podman.sock", combined)
+            self.assertNotIn("--privileged", combined)
 
             docs = "\n".join(
                 (root / relative).read_text(encoding="utf-8")
@@ -78,12 +85,73 @@ class SandboxGenerationTests(unittest.TestCase):
             normalized_docs = " ".join(docs.split())
             self.assertIn("rootless Podman sandbox", docs)
             self.assertIn("scripts/sandbox/check", docs)
+            self.assertIn("Inside-container project commands", docs)
+            self.assertIn("./scripts/check.sh", docs)
             self.assertIn("BLOCKED_ENVIRONMENT", docs)
             self.assertIn("Do not silently fall back to host build/test commands", normalized_docs)
             self.assertIn("Codex still edits this project directory from the host", docs)
             self.assertIn("Do not mount host secrets", docs)
             self.assertNotIn("codex --sandbox danger-full-access", docs)
             self.assertNotIn("do not let sandbox setup block", docs.lower())
+
+    def test_project_container_scripts_set_inside_sandbox_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = self.make_config(
+                root,
+                database="mariadb",
+                project_type="web",
+                sandbox=SandboxConfig(enabled=True, mode="codex", codex_inside_container=True),
+            )
+            generate_project(config)
+            for relative in (
+                "scripts/sandbox/check",
+                "scripts/sandbox/exec",
+                "scripts/sandbox/shell",
+                "scripts/sandbox/web",
+                "scripts/sandbox/codex",
+                "scripts/sandbox/codex-login",
+                "scripts/sandbox/resume",
+                "scripts/sandbox/codex-exec",
+            ):
+                self.assertIn("AGENTKIT_INSIDE_SANDBOX=1", (root / relative).read_text(encoding="utf-8"), relative)
+
+    def test_inside_container_check_runs_project_check_directly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            env = os.environ.copy()
+            env["AGENTKIT_INSIDE_SANDBOX"] = "1"
+            completed = subprocess.run(
+                [str(root / "scripts/sandbox/check")],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Already inside the Agent Kit sandbox. Running ./scripts/check.sh directly.", completed.stdout)
+            self.assertIn("Documentation invariants", completed.stdout)
+            self.assertNotIn("podman", completed.stderr.lower())
+
+    def test_inside_container_exec_runs_command_directly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            env = os.environ.copy()
+            env["AGENTKIT_INSIDE_SANDBOX"] = "1"
+            completed = subprocess.run(
+                [str(root / "scripts/sandbox/exec"), "printf", "inside-exec"],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertEqual(completed.stdout, "inside-exec")
+            self.assertNotIn("podman", completed.stderr.lower())
 
     def test_noninteractive_toolchain_commands_do_not_request_tty_or_fixed_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -102,6 +170,7 @@ class SandboxGenerationTests(unittest.TestCase):
             text = (root / "scripts/sandbox/shell").read_text(encoding="utf-8")
             self.assertNotIn("--name agentkit-sandbox-test-dev", text)
             self.assertIn("podman run --rm -it", text)
+            self.assertIn("if inside_agentkit_sandbox; then\n  exec /bin/sh\nfi", text)
             self.assertIn("run_interactive_project_container /bin/sh", text)
 
     def test_codex_mode_generates_codex_scripts_and_project_volume(self) -> None:
@@ -123,7 +192,31 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("agentkit_sandbox-test_codex_home", codex_script)
             self.assertIn("/home/codex", codex_script)
             self.assertIn("/workspace", codex_script)
+            self.assertIn("AGENTKIT_INSIDE_SANDBOX=1", codex_script)
+            self.assertIn(HOST_SIDE_MESSAGE, codex_script)
             self.assertNotIn("~/.codex", codex_script)
+
+    def test_host_only_sandbox_scripts_refuse_inside_container(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = self.make_config(
+                root,
+                database="mariadb",
+                sandbox=SandboxConfig(enabled=True, mode="codex", codex_inside_container=True),
+            )
+            generate_project(config)
+            for relative in (
+                "scripts/sandbox/build",
+                "scripts/sandbox/codex",
+                "scripts/sandbox/codex-login",
+                "scripts/sandbox/resume",
+                "scripts/sandbox/codex-exec",
+                "scripts/sandbox/db-up",
+                "scripts/sandbox/db-down",
+                "scripts/sandbox/db-shell",
+                "scripts/sandbox/db-logs",
+            ):
+                self.assertIn(HOST_SIDE_MESSAGE, (root / relative).read_text(encoding="utf-8"), relative)
 
     def test_database_projects_generate_db_scripts(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

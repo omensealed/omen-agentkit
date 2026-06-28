@@ -119,9 +119,10 @@ def _sandbox_guidance(config: ProjectConfig | None) -> str:
         "",
         f"- Agent Kit sandbox mode: `{config.sandbox.mode}` using rootless Podman.",
         "- Treat enabled sandbox metadata as a requested execution boundary for build/test/toolchain work.",
-        "- Use `scripts/sandbox/doctor` before assuming the sandbox is ready.",
-        "- Use `scripts/sandbox/build` to build the project container when needed.",
-        "- Use `scripts/sandbox/check` for full verification when available, after focused tests.",
+        "- From the host project root, use `scripts/sandbox/doctor` before assuming the sandbox is ready.",
+        "- From the host project root, use `scripts/sandbox/build` to build the project container when needed.",
+        "- From the host project root, use `scripts/sandbox/check` for full verification when available, after focused tests.",
+        "- If this Codex session is already inside the container, do not run host-side `scripts/sandbox/*` launchers; run `./scripts/check.sh` and focused project commands directly from `/workspace`.",
         "- Do not silently fall back to host build/test commands if `doctor`, `build`, or `check` fails; record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether to continue host-only.",
         "- Use host scripts only when project docs say host execution is required or the human explicitly approves a temporary host-only fallback.",
         "- Do not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory.",
@@ -213,7 +214,7 @@ def build_prompt_body(*, mode: str, idea: str, root: Path, config: ProjectConfig
         "- Make the smallest coherent change that satisfies the request.\n"
         "- Prefer existing project patterns and standard-library/local helpers over new dependencies.\n"
         "- Add or update tests when behavior changes.\n"
-        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it; do not silently use `./scripts/check.sh` as a replacement for a requested sandbox check unless the human approves host-only fallback.\n"
+        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it and Codex is on the host. If Codex is already inside the container, run `./scripts/check.sh` directly instead of host-side sandbox launchers.\n"
         "- Update `docs/11-IMPLEMENTATION-NOTES.md` with objective, files changed, commands run, results, decisions, implications, unresolved problems, and next step.\n"
         "- Update `docs/09-PROGRESS.md` only when the project state actually changed; if this project uses `docs/10-PROGRESS.md` as its progress ledger, update that file instead.\n"
         "- Update `docs/10-DECISIONS.md` only for durable architecture, dependency, data, or workflow decisions.\n"

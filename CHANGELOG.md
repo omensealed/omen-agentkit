@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.4 — 2026-06-27
+
+- Added an `AGENTKIT_INSIDE_SANDBOX=1` marker to generated project container launches and taught generated sandbox wrappers to avoid accidental nested Podman when run inside the container.
+- Changed generated inside-container behavior so `scripts/sandbox/check`, `exec`, `shell`, `web`, and `headless-test` run direct project commands, while host-only sandbox scripts refuse with a clear message.
+- Updated generated and source documentation to distinguish host-side sandbox wrappers from inside-container project commands such as `./scripts/check.sh`.
+
 ## 0.4.3 — 2026-06-27
 
 - Clarified generated rootless Podman sandbox contracts so `toolchain` mode explicitly means host Codex editing mounted project files while build/test/toolchain commands run in Podman.

@@ -159,6 +159,9 @@ def sandbox_note(config: ProjectConfig) -> str:
         ```
 
         {codex_inside}
+        If Codex is already running inside the container, do not run host-side `scripts/sandbox/*` launchers.
+        Run project commands directly from `/workspace`, such as `./scripts/check.sh`.
+
         See `docs/12-SANDBOX.md` for the security model. Do not mount host secrets or use host full-access as the default answer to permission problems.
         """
     )
@@ -184,6 +187,10 @@ def first_prompt_sandbox_note(config: ProjectConfig) -> str:
         silently fall back to host build/test commands if the sandbox was requested but `doctor`, `build`, or
         `check` fails. Record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether
         they want a temporary host-only fallback.
+
+        If this Codex session is already running inside the container, do not run host-side
+        `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such as
+        `./scripts/check.sh` or focused test commands.
         """
     )
 

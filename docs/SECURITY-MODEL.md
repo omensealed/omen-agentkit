@@ -47,6 +47,8 @@ The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles
 
 Rootless Podman reduces host filesystem risk, but untrusted code can still modify mounted project files and can misuse network access if networking is available. Generated docs prohibit `--dangerously-bypass-approvals-and-sandbox`, host full-access as the default permission answer, production secret mounts, deployment, rsync to production, GitHub pushes, and remote resource creation without explicit approval.
 
+Generated sandbox launcher scripts are host-side wrappers unless they explicitly detect `AGENTKIT_INSIDE_SANDBOX=1` and run direct project commands. Containers receive this environment marker, and generated docs tell inside-container agents to run commands such as `./scripts/check.sh` rather than starting nested Podman. The sandbox does not mount the Podman socket and does not use privileged Podman-in-Podman behavior.
+
 Host Codex session/history import is not automatic. Generated projects prefer a no-secrets handoff summary in `docs/CODEX-HANDOFF.md` over copying raw session transcripts or auth files into the container.
 
 ### Local-model overreach

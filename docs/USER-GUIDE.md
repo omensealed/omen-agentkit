@@ -98,10 +98,19 @@ Run the local quality gate:
 If you enabled the rootless Podman sandbox, inspect it before relying on it:
 
 ```bash
+# Host project root:
 agent-starter sandbox doctor .
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
+```
+
+Inside the generated container, run project commands directly instead of host-side sandbox launchers:
+
+```bash
+./scripts/check.sh
+npm test
+python3 -m unittest
 ```
 
 The default `toolchain` sandbox mode keeps Codex on the host editing the local project files and runs project build/test/toolchain work in a container against the mounted `/workspace`. If the sandbox was requested and `doctor`, `build`, or `check` fails, do not treat host checks as equivalent unless you deliberately approve a temporary host-only fallback. If you explicitly selected Codex-inside-container mode, use:

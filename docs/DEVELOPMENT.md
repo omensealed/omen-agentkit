@@ -51,7 +51,7 @@ Generated `AGENTS.md`, `FIRST_PROMPT.md`, numbered docs, scripts, and `.codex/co
 
 Generated `.agents/skills/agentkit/SKILL.md` and `agentkit-skill.json` are part of the optional Codex skill contract. Keep `SKILL.md` concise and store Agent Kit-specific version data in the JSON sidecar.
 
-Generated `.agent-starter/sandbox/`, `scripts/sandbox/`, optional `docs/12-SANDBOX.md`, and optional `FIRST_RUN_AUTONOMOUS.md` are part of the rootless Podman sandbox contract. Keep scripts POSIX-shell friendly where practical, reviewable, project-scoped, and free of host secret mounts. Normal tests should validate generated text and syntax without requiring Podman.
+Generated `.agent-starter/sandbox/`, `scripts/sandbox/`, optional `docs/12-SANDBOX.md`, and optional `FIRST_RUN_AUTONOMOUS.md` are part of the rootless Podman sandbox contract. Keep scripts POSIX-shell friendly where practical, reviewable, project-scoped, and free of host secret mounts. Project containers are marked with `AGENTKIT_INSIDE_SANDBOX=1`; generated wrappers must either run direct project commands inside the container or refuse host-only behavior, never nested Podman. Normal tests should validate generated text and syntax without requiring Podman.
 
 ## Release
 

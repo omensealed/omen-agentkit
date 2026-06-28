@@ -100,6 +100,9 @@ class IdeaPromptTests(unittest.TestCase):
             self.assertIn("Do not silently fall back to host build/test commands", result.body)
             self.assertIn("BLOCKED_ENVIRONMENT", result.body)
             self.assertIn("Codex may still edit the host project directory", result.body)
+            self.assertIn("already inside the container", result.body)
+            self.assertIn("run `./scripts/check.sh`", result.body)
+            self.assertIn("do not run host-side `scripts/sandbox/*` launchers", result.body)
 
     def test_cli_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -47,7 +47,7 @@
 - `scripts/setup-agent.sh`: official Codex install/login boundary.
 - `scripts/agent-status.sh`: Codex version and login status.
 - `scripts/new-implementation-note.sh`: appends a complete note skeleton.
-- `scripts/sandbox/*`: optional rootless Podman doctor/build/shell/exec/check/logs/clean scripts, plus Codex, database, web, and game helpers when selected by project metadata.
+- `scripts/sandbox/*`: optional rootless Podman doctor/build/shell/exec/check/logs/clean scripts, plus Codex, database, web, and game helpers when selected by project metadata. Host-side wrappers must not accidentally run nested Podman from inside the project container.
 - `scripts/playtest-host`: optional host playtest helper for game projects where container GUI/audio/controller support is intentionally not promised.
 
 Template changes must update generator requirements, validation, tests, this catalog, and representative generated-project inspections together.

@@ -228,12 +228,22 @@ Generated sandbox files live under `.agent-starter/sandbox/` and `scripts/sandbo
 Useful generated commands:
 
 ```bash
+# Run these from the host project root:
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
 scripts/sandbox/shell
 scripts/sandbox/codex-login  # only when Codex-inside-container mode was explicitly selected
 scripts/sandbox/codex
+```
+
+Inside the container, do not run host-side `scripts/sandbox/*` launchers. Run project commands directly:
+
+```bash
+./scripts/check.sh
+npm test
+python3 -m unittest
+cargo test
 ```
 
 Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. If the sandbox was requested and `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails, record the failure and fix the sandbox or explicitly approve a host-only fallback; do not silently treat host checks as equivalent. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
