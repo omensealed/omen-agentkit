@@ -5,7 +5,7 @@
 - [x] Record successful sandbox preflight with `.agent-starter/sandbox/preflight.json`.
 - [x] Stop generated prompts from telling constrained host Codex to rerun Podman bootstrap after preflight.
 - [x] Run final full source check after version bump.
-- [ ] Build and verify patch release archive/checksum locally.
+- [x] Build and verify patch release archive/checksum locally.
 - [ ] Tag and publish patch release if final archive check passes.
 
 ## 0.4.6 patch release prep
