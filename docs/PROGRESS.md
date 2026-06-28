@@ -6,7 +6,7 @@
 - [x] Document human-run host preflight or Codex-inside-container as the safe alternatives.
 - [x] Run final full source check after version bump.
 - [x] Build and verify patch release archive/checksum locally.
-- [ ] Tag and publish patch release if final archive check passes.
+- [x] Tag and publish patch release if final archive check passes.
 
 ## 0.4.4 patch release prep
 
