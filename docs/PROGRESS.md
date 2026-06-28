@@ -5,7 +5,7 @@
 - [x] Prevent generated prompts from treating host-side Podman bootstrap as a Codex full-permissions problem.
 - [x] Document human-run host preflight or Codex-inside-container as the safe alternatives.
 - [x] Run final full source check after version bump.
-- [ ] Build and verify patch release archive/checksum locally.
+- [x] Build and verify patch release archive/checksum locally.
 - [ ] Tag and publish patch release if final archive check passes.
 
 ## 0.4.4 patch release prep
