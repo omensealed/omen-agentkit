@@ -61,6 +61,8 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertEqual(sandbox["engine"], "podman")
             self.assertEqual(sandbox["workspace_mount"], "/workspace")
             self.assertEqual(sandbox["mode"], "toolchain")
+            self.assertEqual(sandbox["user_namespace"], "keep-id")
+            self.assertIn("id -u/id -g", sandbox["runtime_user"])
 
             combined = "\n".join(
                 path.read_text(encoding="utf-8")
@@ -77,6 +79,15 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertNotIn("--volume $HOME", combined)
             self.assertNotIn("/run/podman/podman.sock", combined)
             self.assertNotIn("--privileged", combined)
+            self.assertNotIn("useradd -m -u 1000", (root / ".agent-starter/sandbox/Containerfile").read_text(encoding="utf-8"))
+            for relative in ("scripts/sandbox/check", "scripts/sandbox/exec", "scripts/sandbox/shell"):
+                text = (root / relative).read_text(encoding="utf-8")
+                self.assertIn("HOST_UID=$(id -u)", text, relative)
+                self.assertIn("HOST_GID=$(id -g)", text, relative)
+                self.assertIn("--userns=keep-id", text, relative)
+                self.assertIn('--user "$HOST_UID:$HOST_GID"', text, relative)
+                self.assertIn('--env HOME="$CONTAINER_HOME"', text, relative)
+                self.assertIn("$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U", text, relative)
 
             docs = "\n".join(
                 (root / relative).read_text(encoding="utf-8")
@@ -167,6 +178,15 @@ class SandboxGenerationTests(unittest.TestCase):
                 self.assertIn("podman run --rm \\", text)
                 self.assertNotIn("podman run --rm -it", text)
 
+    def test_build_reuses_existing_image_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            text = (root / "scripts/sandbox/build").read_text(encoding="utf-8")
+            self.assertIn("podman image exists agentkit-sandbox-test:dev", text)
+            self.assertIn("scripts/sandbox/build --rebuild", text)
+            self.assertIn("--label agentkit.project=sandbox-test", text)
+
     def test_sandbox_shell_remains_interactive_without_fixed_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "project"
@@ -174,8 +194,20 @@ class SandboxGenerationTests(unittest.TestCase):
             text = (root / "scripts/sandbox/shell").read_text(encoding="utf-8")
             self.assertNotIn("--name agentkit-sandbox-test-dev", text)
             self.assertIn("podman run --rm -it", text)
+            self.assertIn("--label agentkit.project=sandbox-test", text)
             self.assertIn("if inside_agentkit_sandbox; then\n  exec /bin/sh\nfi", text)
             self.assertIn("run_interactive_project_container /bin/sh", text)
+
+    def test_clean_script_can_remove_image_and_requires_yes_for_volumes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            text = (root / "scripts/sandbox/clean").read_text(encoding="utf-8")
+            self.assertIn("Usage: scripts/sandbox/clean [--image] [--volumes] [--all] [--yes]", text)
+            self.assertIn("podman ps -aq --filter label=agentkit.project=sandbox-test", text)
+            self.assertIn("podman image rm agentkit-sandbox-test:dev", text)
+            self.assertIn("Refusing to remove project volumes without --yes", text)
+            self.assertIn("agentkit_sandbox-test_codex_home", text)
 
     def test_codex_mode_generates_codex_scripts_and_project_volume(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -197,6 +229,10 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("/home/codex", codex_script)
             self.assertIn("/workspace", codex_script)
             self.assertIn("AGENTKIT_INSIDE_SANDBOX=1", codex_script)
+            self.assertIn("--userns=keep-id", codex_script)
+            self.assertIn('--user "$HOST_UID:$HOST_GID"', codex_script)
+            self.assertIn("--env HOME=/home/codex", codex_script)
+            self.assertIn("$CODEX_HOME_VOLUME:/home/codex:Z,U", codex_script)
             self.assertIn(HOST_SIDE_MESSAGE, codex_script)
             self.assertNotIn("~/.codex", codex_script)
 
@@ -258,9 +294,39 @@ class SandboxGenerationTests(unittest.TestCase):
             )
             self.assertTrue((root / "scripts/sandbox/headless-test").is_file())
             self.assertTrue((root / "scripts/playtest-host").is_file())
+            self.assertFalse((root / "scripts/sandbox/playtest-gui").exists())
             sandbox_doc = (root / "docs/12-SANDBOX.md").read_text(encoding="utf-8")
             self.assertIn("Interactive GPU/audio/controller playtesting is usually better on the host", sandbox_doc)
+            self.assertIn("sandbox.gui_passthrough: true", sandbox_doc)
             self.assertNotIn("GUI forwarding is enabled", sandbox_doc)
+
+    def test_game_gui_passthrough_is_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(
+                self.make_config(
+                    root,
+                    project_type="game",
+                    languages=["godot"],
+                    sandbox=SandboxConfig(enabled=True, mode="toolchain", gui_passthrough=True),
+                )
+            )
+            script = (root / "scripts/sandbox/playtest-gui").read_text(encoding="utf-8")
+            sandbox_doc = (root / "docs/12-SANDBOX.md").read_text(encoding="utf-8")
+            sandbox_json = json.loads((root / ".agent-starter/sandbox/sandbox.json").read_text(encoding="utf-8"))
+            self.assertTrue(sandbox_json["advanced_passthrough"]["gpu_audio_controller"])
+            self.assertIn("Wayland socket not found", script)
+            self.assertIn("--device /dev/dri", script)
+            self.assertIn("--device /dev/input", script)
+            self.assertIn("--userns=keep-id", script)
+            self.assertIn('--user "$USER_ID:$(id -g)"', script)
+            self.assertIn("pipewire-0", script)
+            self.assertIn("selected host display/audio/input interfaces", script)
+            self.assertNotIn("~/.codex", script)
+            self.assertNotIn("$HOME", script)
+            self.assertNotIn("/run/podman/podman.sock", script)
+            self.assertIn("Advanced GUI passthrough is enabled", sandbox_doc)
+            self.assertIn("Headless checks remain the preferred autonomous Codex path", sandbox_doc)
 
     def test_autonomous_prompt_is_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -310,6 +376,29 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("[missing] podman", "\n".join(lines))
             self.assertIn("sudo pacman -S --needed podman passt fuse-overlayfs", "\n".join(lines))
             run.assert_not_called()
+
+    def test_source_sandbox_doctor_reports_userns_support(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+
+            def fake_run(args: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+                if args[:3] == ["podman", "info", "--format"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="true\n", stderr="")
+                if args == ["podman", "run", "--help"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="Usage: podman run [options]\n      --userns string\n", stderr="")
+                if args == ["id", "-un"]:
+                    return subprocess.CompletedProcess(args, 0, stdout="tester\n", stderr="")
+                if args[:3] == ["podman", "image", "exists"]:
+                    return subprocess.CompletedProcess(args, 1, stdout="", stderr="")
+                raise AssertionError(f"unexpected command: {args!r}")
+
+            with mock.patch("agent_starter.sandbox.shutil.which", return_value="/usr/bin/podman"), mock.patch(
+                "agent_starter.sandbox.subprocess.run", side_effect=fake_run
+            ):
+                code, lines = doctor_lines(root)
+            self.assertEqual(code, 0)
+            self.assertIn("[ok] Podman supports --userns=keep-id for host-owned workspace files", "\n".join(lines))
 
 
 if __name__ == "__main__":

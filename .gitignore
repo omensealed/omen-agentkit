@@ -17,3 +17,7 @@ examples-output/
 .env
 .env.*
 !.env.example
+
+# Local generated-project sandboxes used during maintainer testing.
+canary-notes2/
+tic-tac-toe/

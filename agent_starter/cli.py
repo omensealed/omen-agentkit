@@ -1123,6 +1123,38 @@ def command_sandbox_preflight(args: argparse.Namespace) -> int:
     return sandbox_preflight(Path(args.project), run_check=not args.no_check)
 
 
+def command_sandbox_clean(args: argparse.Namespace) -> int:
+    root = Path(args.project).expanduser().resolve()
+    script = root / "scripts" / "sandbox" / "clean"
+    if not script.is_file():
+        _print(f"[fail] Missing generated sandbox clean script: {script}")
+        return 2
+    command: list[object] = [script]
+    if args.image:
+        command.append("--image")
+    if args.volumes:
+        command.append("--volumes")
+    if args.all:
+        command.append("--all")
+    if args.yes:
+        command.append("--yes")
+    return _run_project_command(root, command, label="sandbox clean")
+
+
+def command_gui(args: argparse.Namespace) -> int:
+    del args
+    try:
+        from .gui.app import run_gui
+    except RuntimeError as exc:
+        _print(f"Error: {exc}")
+        return 3
+    try:
+        return run_gui()
+    except RuntimeError as exc:
+        _print(f"Error: {exc}")
+        return 3
+
+
 def _github_remote(root: Path, config: ProjectConfig) -> int:
     visibility = "private" if config.github_remote == "create-private" else "public"
     if shutil.which("gh") is None:
@@ -1328,6 +1360,7 @@ def command_example(args: argparse.Namespace) -> int:
             "rootless_required": True,
             "install_agentkit_skill": True,
             "first_run_autonomous_prompt": False,
+            "gui_passthrough": False,
         },
     }
     text = json.dumps(example, indent=2) + "\n"
@@ -1408,6 +1441,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Inspect the host and Codex CLI without changing anything.")
     doctor.set_defaults(func=command_doctor)
+
+    gui = sub.add_parser("gui", help="Open the optional beginner-friendly desktop wizard.")
+    gui.set_defaults(func=command_gui)
 
     auth = sub.add_parser("auth", help="Install or authorize Codex through its official CLI flow.")
     auth.add_argument("--install", action="store_true", help="Run the displayed vendor installer when missing.")
@@ -1504,6 +1540,14 @@ def build_parser() -> argparse.ArgumentParser:
     sandbox_preflight_parser.add_argument("project", nargs="?", default=".")
     sandbox_preflight_parser.add_argument("--no-check", action="store_true", help="Run doctor/build only, skipping sandbox check.")
     sandbox_preflight_parser.set_defaults(func=command_sandbox_preflight)
+
+    sandbox_clean = sandbox_sub.add_parser("clean", help="Run the generated project sandbox cleanup helper.")
+    sandbox_clean.add_argument("project", nargs="?", default=".")
+    sandbox_clean.add_argument("--image", action="store_true", help="Also remove the generated project image.")
+    sandbox_clean.add_argument("--volumes", action="store_true", help="Also remove project cache/Codex-home/database volumes; requires --yes.")
+    sandbox_clean.add_argument("--all", action="store_true", help="Remove containers, image, and volumes; volumes require --yes.")
+    sandbox_clean.add_argument("--yes", action="store_true", help="Confirm removal of project volumes.")
+    sandbox_clean.set_defaults(func=command_sandbox_clean)
 
     example = sub.add_parser("example-answers", help="Print or write an answers JSON example.")
     example.add_argument("--output")

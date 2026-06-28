@@ -41,6 +41,19 @@ agent-starter new
 
 The installer writes only beneath the user data and binary directories, normally `~/.local/share/cli-ai-agent-starter-kit` and `~/.local/bin/agent-starter`. It does not use `sudo`.
 
+## Optional desktop GUI
+
+The CLI remains the primary dependency-light path. A beginner-friendly desktop wizard is available as an optional `pywebview` frontend over the same `ProjectConfig`, `generate_project()`, validation, and Codex adapter boundaries:
+
+```bash
+pip install 'cli-ai-agent-starter-kit[gui]'
+agent-starter gui
+# or
+agent-starter-gui
+```
+
+The GUI uses local HTML, CSS, and JavaScript only. It does not load CDN assets, ask for credentials, inspect Codex token files, install packages, run `sudo`, create remotes, push, deploy, or bypass generated conflict/proposal behavior. If the optional GUI dependency is unavailable or the desktop stack cannot open a window, use `agent-starter new` or `agent-starter generate`.
+
 ## The guided workflow
 
 The interactive wizard walks through:
@@ -122,6 +135,9 @@ agent-starter rsync-plan /path/to/project /path/to/project-mirror
 # Inspect the host, CachyOS tools, and Codex status
 agent-starter doctor
 
+# Open the optional desktop wizard when pywebview is installed
+agent-starter gui
+
 # Launch Codex interactively with the prepared first prompt
 agent-starter launch /path/to/project
 
@@ -143,6 +159,11 @@ agent-starter sandbox doctor /path/to/project
 
 # Run generated sandbox doctor/build/check before launching Codex
 agent-starter sandbox preflight /path/to/project
+
+# Remove generated project sandbox containers, and optionally image/volumes
+agent-starter sandbox clean /path/to/project
+agent-starter sandbox clean /path/to/project --image
+agent-starter sandbox clean /path/to/project --volumes --yes
 
 # Add task-specific guidance
 agent-starter prompt /path/to/project --template bug --request "Fix CSV import crash"
@@ -228,6 +249,8 @@ New local projects can include a rootless Podman sandbox. The default `toolchain
 
 Generated sandbox files live under `.agent-starter/sandbox/` and `scripts/sandbox/`. They do not mount host `~/.codex`, `~/.ssh`, browser profiles, GitHub credentials, production configs, or the host home directory by default. Container auth uses `scripts/sandbox/codex-login` only when the user deliberately runs it. The starter recommends handoff summaries instead of copying raw Codex sessions or auth files into containers.
 
+Generated project containers use rootless Podman `--userns=keep-id` with the current `id -u` and `id -g` instead of assuming UID/GID `1000`. This keeps files created under the mounted `/workspace` owned by the real host user on CachyOS/Arch-style systems.
+
 Useful generated commands:
 
 ```bash
@@ -262,6 +285,8 @@ cargo test
 ```
 
 Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. If the sandbox was requested and `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails, record the failure and fix the sandbox or explicitly approve a host-only fallback; do not silently treat host checks as equivalent. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
+
+For Godot or other interactive game projects, headless sandbox checks are the default autonomous path. Real rendering, audio, and controller playtesting usually needs either host playtesting with `scripts/playtest-host` or the advanced opt-in `sandbox.gui_passthrough: true` setting. When enabled, the generated `scripts/sandbox/playtest-gui` helper intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container. Leave it off unless the project needs containerized interactive playtesting and you accept that extra host interface exposure.
 
 If a user wants to attempt continuation with a local Ollama model, check the installed models first:
 

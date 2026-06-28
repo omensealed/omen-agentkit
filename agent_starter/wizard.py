@@ -452,6 +452,16 @@ def run_wizard(
     config.stack_notes = p.ask("Stack/architecture constraints or preferences", default=config.advisor.architecture)
     config.database_notes = p.ask("Database constraints, existing schema, or expected data size (never enter a password)")
     config.minimal_dependencies = p.confirm("Require justification before adding production dependencies?", default=True)
+    if config.sandbox.enabled and (config.project_type == "game" or "godot" in config.languages):
+        p.output(
+            "Game/Godot note: headless sandbox checks can work without GUI passthrough, but interactive "
+            "container playtesting usually needs explicit GPU/audio/controller passthrough. This mounts extra "
+            "host interfaces and should stay off unless you deliberately want container playtesting."
+        )
+        config.sandbox.gui_passthrough = p.confirm(
+            "Generate the advanced GPU/audio/controller passthrough playtest script?",
+            default=False,
+        )
 
     p.section("Testing, Git, and automation")
     default_tests = ["unit", "integration"]

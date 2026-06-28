@@ -1,5 +1,17 @@
 # Progress
 
+## 0.4.8 release prep
+
+- [x] Add optional desktop GUI frontend without replacing the CLI.
+- [x] Reuse generated sandbox images by default and add cleanup controls.
+- [x] Add explicit game/Godot GUI passthrough opt-in.
+- [x] Use rootless Podman `--userns=keep-id` and runtime host UID/GID in generated project container wrappers.
+- [x] Decide the next release version and update `VERSION`, `agent_starter.__version__`, `ProjectConfig.kit_version`, and `pyproject.toml` together.
+- [x] Run final full source check after version bump.
+- [ ] Build and verify release archive/checksum locally.
+- [ ] Tag and publish release if final archive check passes.
+- [ ] Live-test advanced Godot GUI passthrough with a real Wayland/PipeWire/GPU/controller setup.
+
 ## 0.4.7 patch release prep
 
 - [x] Record successful sandbox preflight with `.agent-starter/sandbox/preflight.json`.
@@ -88,9 +100,12 @@
 - [x] Copy/paste Codex continuation prompt generation for later project phases and feature requests.
 - [x] Repo-local `$agentkit` Codex skill workflow with versioned sidecar metadata and local `idea-prompt` file generation.
 - [x] Optional rootless Podman project sandbox generation for containerized toolchain checks and explicit Codex-inside-container workflows.
+- [x] Project-scoped sandbox image reuse and explicit cleanup commands for labeled containers, images, and volumes.
+- [x] Explicit game/Godot GUI passthrough opt-in for containerized interactive playtesting, while keeping headless checks as the default autonomous path.
 - [x] Assessment-only Ollama readiness gate with override-required local-model handoff prompt generation.
 - [x] Local-first GitHub posture: local Git remains available while GitHub Actions are deferred by default.
 - [x] Workspace status and GitHub readiness gates for local-first project management.
+- [x] Optional beginner-friendly desktop GUI frontend over the same core CLI generator, validation, and Codex adapter boundaries.
 
 ## Sandbox manager maturity plan
 

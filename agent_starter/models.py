@@ -86,6 +86,7 @@ class SandboxConfig:
     rootless_required: bool = True
     install_agentkit_skill: bool = True
     first_run_autonomous_prompt: bool = False
+    gui_passthrough: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "SandboxConfig":
@@ -113,7 +114,7 @@ class ProjectConfig:
     """Answers collected by the wizard and persisted with generated projects."""
 
     schema_version: int = SCHEMA_VERSION
-    kit_version: str = "0.4.7"
+    kit_version: str = "0.4.8"
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
 

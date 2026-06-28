@@ -124,6 +124,8 @@ python3 -m unittest
 
 The default `toolchain` sandbox mode keeps Codex on the host editing the local project files and runs project build/test/toolchain work in a container against the mounted `/workspace`. If the sandbox was requested and `doctor`, `build`, or `check` fails, do not treat host checks as equivalent unless you deliberately approve a temporary host-only fallback. If you explicitly selected Codex-inside-container mode, use:
 
+Generated Podman wrappers use `--userns=keep-id` with your current `id -u` and `id -g`, not a fixed UID/GID. On normal rootless Podman setups this keeps files created in `/workspace` owned by your host account.
+
 ```bash
 scripts/sandbox/codex-login
 scripts/sandbox/codex
@@ -131,6 +133,8 @@ scripts/sandbox/resume
 ```
 
 `codex-login` is an explicit user action and stores Codex state in a project-specific container home volume. The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory by default. Prefer `docs/agent-prompts/create-container-handoff.md` to create a no-secrets handoff summary instead of copying raw session transcripts.
+
+For Godot or interactive game projects, containerized headless checks are the default. Interactive rendering, audio, and controller testing should use `scripts/playtest-host` unless you explicitly enable `sandbox.gui_passthrough`. That advanced option generates `scripts/sandbox/playtest-gui` and intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container.
 
 Rootless Podman reduces host filesystem risk, but container commands can still change mounted project files and can misuse network access when networking is available. Do not use host full-access as the default answer to permission friction, and do not deploy, push, rsync production targets, or mount real secrets without explicit approval.
 

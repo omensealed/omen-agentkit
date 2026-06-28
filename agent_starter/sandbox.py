@@ -31,6 +31,7 @@ SANDBOX_EXECUTABLES: tuple[str, ...] = (
     "scripts/sandbox/db-logs",
     "scripts/sandbox/web",
     "scripts/sandbox/headless-test",
+    "scripts/sandbox/playtest-gui",
     "scripts/playtest-host",
 )
 
@@ -60,11 +61,16 @@ def sandbox_json(config: ProjectConfig) -> str:
         "rootless_required": config.sandbox.rootless_required,
         "codex_inside_container": config.sandbox.codex_inside_container,
         "workspace_mount": "/workspace",
+        "user_namespace": "keep-id",
+        "runtime_user": "host uid/gid from id -u/id -g",
         "image": image_name(config),
         "volumes": {
             "cache": volume_name(config, "cache"),
             "codex_home": volume_name(config, "codex_home"),
             "db_data": volume_name(config, "db_data"),
+        },
+        "advanced_passthrough": {
+            "gpu_audio_controller": config.sandbox.gui_passthrough,
         },
         "mount_policy": {
             "project_workspace": "rw",
@@ -97,10 +103,11 @@ def containerfile(config: ProjectConfig) -> str:
 
         RUN pacman -Syu --noconfirm --needed {install} \\
             && pacman -Scc --noconfirm
-        RUN useradd -m -u 1000 codex
+        RUN mkdir -p /workspace /home/codex /tmp/agentkit-home \\
+            && chmod 1777 /tmp/agentkit-home \\
+            && chmod 0777 /home/codex
         {codex_note}
         WORKDIR /workspace
-        USER codex
         """
     )
 
@@ -144,14 +151,21 @@ def _script_prelude(config: ProjectConfig) -> str:
         CACHE_VOLUME={shlex.quote(volume_name(config, "cache"))}
         CODEX_HOME_VOLUME={shlex.quote(volume_name(config, "codex_home"))}
         DB_VOLUME={shlex.quote(volume_name(config, "db_data"))}
+        HOST_UID=$(id -u)
+        HOST_GID=$(id -g)
+        CONTAINER_HOME=/tmp/agentkit-home
 
         {_inside_sandbox_helper()}
 
         run_project_container() {{
           podman run --rm \\
+            --label agentkit.project={shlex.quote(project_id(config))} \\
+            --userns=keep-id \\
+            --user "$HOST_UID:$HOST_GID" \\
             --env AGENTKIT_INSIDE_SANDBOX=1 \\
+            --env HOME="$CONTAINER_HOME" \\
             --volume "$ROOT:/workspace:Z" \\
-            --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
+            --volume "$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U" \\
             --workdir /workspace \\
             "$IMAGE" "$@"
         }}
@@ -179,8 +193,14 @@ def doctor_script(config: ProjectConfig) -> str:
           printf '%s\\n' '[warn] Could not confirm rootless mode from podman info.'
         fi
         USER_NAME=$(id -un)
+        printf '[ok] host user id: %s:%s\\n' "$(id -u)" "$(id -g)"
         grep -q "^${{USER_NAME}}:" /etc/subuid 2>/dev/null && printf '%s\\n' '[ok] /etc/subuid has a mapping for this user.' || printf '%s\\n' '[warn] /etc/subuid mapping not found or not inspectable.'
         grep -q "^${{USER_NAME}}:" /etc/subgid 2>/dev/null && printf '%s\\n' '[ok] /etc/subgid has a mapping for this user.' || printf '%s\\n' '[warn] /etc/subgid mapping not found or not inspectable.'
+        if podman run --help 2>/dev/null | grep -q -- '--userns'; then
+          printf '%s\\n' '[ok] Podman supports --userns=keep-id for host-owned workspace files.'
+        else
+          printf '%s\\n' '[warn] Could not confirm Podman --userns support; workspace file ownership may need review.'
+        fi
         command -v pasta >/dev/null 2>&1 || command -v passt >/dev/null 2>&1 || printf '%s\\n' '[warn] passt/pasta not found; rootless networking may be limited.'
         command -v fuse-overlayfs >/dev/null 2>&1 || printf '%s\\n' '[warn] fuse-overlayfs not found; Podman may use another storage driver.'
         test -f "$ROOT/.agent-starter/sandbox/sandbox.json" && printf '%s\\n' '[ok] sandbox config exists.'
@@ -196,7 +216,15 @@ def build_script(config: ProjectConfig) -> str:
         set -eu
         ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
         {_host_side_guard()}
-        podman build -t {shlex.quote(image_name(config))} -f "$ROOT/.agent-starter/sandbox/Containerfile" "$ROOT"
+        if podman image exists {shlex.quote(image_name(config))} && [ "${{1:-}}" != "--rebuild" ]; then
+          printf '%s\\n' 'Sandbox image already exists; reusing it. Run scripts/sandbox/build --rebuild to rebuild.'
+          exit 0
+        fi
+        podman build \\
+          --label agentkit.project={shlex.quote(project_id(config))} \\
+          -t {shlex.quote(image_name(config))} \\
+          -f "$ROOT/.agent-starter/sandbox/Containerfile" \\
+          "$ROOT"
         """
     )
 
@@ -211,16 +239,20 @@ def shell_script(config: ProjectConfig) -> str:
 
         run_interactive_project_container() {
           podman run --rm -it \\
+            --label agentkit.project=__PROJECT_ID__ \\
+            --userns=keep-id \\
+            --user "$HOST_UID:$HOST_GID" \\
             --env AGENTKIT_INSIDE_SANDBOX=1 \\
+            --env HOME="$CONTAINER_HOME" \\
             --volume "$ROOT:/workspace:Z" \\
-            --volume "$CACHE_VOLUME:/home/codex/.cache:Z" \\
+            --volume "$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U" \\
             --workdir /workspace \\
             "$IMAGE" "$@"
         }
 
         run_interactive_project_container /bin/sh
         """
-    )
+    ).replace("__PROJECT_ID__", shlex.quote(project_id(config)))
 
 
 def exec_script(config: ProjectConfig) -> str:
@@ -272,9 +304,41 @@ def clean_script(config: ProjectConfig) -> str:
         set -eu
         {_host_side_guard()}
         printf '%s\\n' 'This removes stopped sandbox containers only. Volumes are preserved.'
-        podman container prune --filter label=agentkit.project={shlex.quote(project_id(config))}
-        printf '%s\\n' 'To remove project volumes manually, review:'
-        printf '  podman volume rm %s %s %s\\n' {shlex.quote(volume_name(config, "cache"))} {shlex.quote(volume_name(config, "codex_home"))} {shlex.quote(volume_name(config, "db_data"))}
+        REMOVE_IMAGE=0
+        REMOVE_VOLUMES=0
+        YES=0
+        for arg in "$@"; do
+          case "$arg" in
+            --image) REMOVE_IMAGE=1 ;;
+            --volumes) REMOVE_VOLUMES=1 ;;
+            --all) REMOVE_IMAGE=1; REMOVE_VOLUMES=1 ;;
+            --yes) YES=1 ;;
+            *)
+              printf 'Unknown option: %s\\n' "$arg"
+              printf '%s\\n' 'Usage: scripts/sandbox/clean [--image] [--volumes] [--all] [--yes]'
+              exit 2
+              ;;
+          esac
+        done
+        containers=$(podman ps -aq --filter label=agentkit.project={shlex.quote(project_id(config))} || true)
+        if [ -n "$containers" ]; then
+          printf '%s\\n' "$containers" | xargs podman rm -f
+        else
+          printf '%s\\n' 'No labeled project containers found.'
+        fi
+        if [ "$REMOVE_IMAGE" -eq 1 ]; then
+          podman image rm {shlex.quote(image_name(config))} || true
+        fi
+        if [ "$REMOVE_VOLUMES" -eq 1 ]; then
+          if [ "$YES" -ne 1 ]; then
+            printf '%s\\n' 'Refusing to remove project volumes without --yes.'
+            printf '%s\\n' 'Volumes can contain Codex container auth/session state, caches, and dev database data.'
+            exit 2
+          fi
+          podman volume rm {shlex.quote(volume_name(config, "cache"))} {shlex.quote(volume_name(config, "codex_home"))} {shlex.quote(volume_name(config, "db_data"))} || true
+        else
+          printf '%s\\n' 'Volumes preserved. Add --volumes --yes to remove cache, Codex home, and database volumes.'
+        fi
         """
     )
 
@@ -290,7 +354,9 @@ def codex_script(config: ProjectConfig) -> str:
         "fi\n"
         'podman run --rm -it --name agentkit-'
         + project_id(config)
-        + '-codex --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" '
+        + '-codex --label agentkit.project='
+        + project_id(config)
+        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" '
         '--workdir /workspace '
         + shlex.quote(image_name(config))
         + ' codex --sandbox workspace-write --ask-for-approval on-request\n'
@@ -303,7 +369,9 @@ def codex_login_script(config: ProjectConfig) -> str:
         _script_prelude(config)
         + "\n"
         + _host_side_guard()
-        + '\npodman run --rm -it --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" --workdir /workspace '
+        + '\npodman run --rm -it --label agentkit.project='
+        + project_id(config)
+        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
         + shlex.quote(image_name(config))
         + " codex login --device-auth\n"
     )
@@ -314,7 +382,9 @@ def resume_script(config: ProjectConfig) -> str:
         _script_prelude(config)
         + "\n"
         + _host_side_guard()
-        + '\npodman run --rm -it --env AGENTKIT_INSIDE_SANDBOX=1 --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z" --workdir /workspace '
+        + '\npodman run --rm -it --label agentkit.project='
+        + project_id(config)
+        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
         + shlex.quote(image_name(config))
         + " codex resume --last\n"
     )
@@ -327,9 +397,13 @@ def codex_exec_script(config: ProjectConfig) -> str:
         PROMPT_FILE=${{1:-FIRST_RUN_AUTONOMOUS.md}}
         test -f "$ROOT/$PROMPT_FILE"
         podman run --rm -i \\
+          --label agentkit.project={shlex.quote(project_id(config))} \\
+          --userns=keep-id \\
+          --user "$HOST_UID:$HOST_GID" \\
           --env AGENTKIT_INSIDE_SANDBOX=1 \\
+          --env HOME=/home/codex \\
           --volume "$ROOT:/workspace:Z" \\
-          --volume "$CODEX_HOME_VOLUME:/home/codex:Z" \\
+          --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" \\
           --workdir /workspace \\
           {shlex.quote(image_name(config))} \\
           codex exec --sandbox workspace-write --ask-for-approval never --cd /workspace - < "$ROOT/$PROMPT_FILE"
@@ -373,7 +447,7 @@ def db_scripts(config: ProjectConfig) -> dict[str, str]:
         test -f .env.sandbox || cp .env.sandbox.example .env.sandbox
         podman volume exists {shlex.quote(volume)} || podman volume create {shlex.quote(volume)}
         . ./.env.sandbox
-        podman run -d --replace --name {shlex.quote(name)} {env_file} \\
+        podman run -d --replace --name {shlex.quote(name)} --label agentkit.project={shlex.quote(project_id(config))} {env_file} \\
           {env_block} \\
           -p 127.0.0.1:${{SANDBOX_DB_PORT:-{port}}}:{port} \\
           --volume {shlex.quote(volume)}:{data_path}:Z \\
@@ -416,7 +490,7 @@ def web_script(config: ProjectConfig) -> dict[str, str]:
 def game_scripts(config: ProjectConfig) -> dict[str, str]:
     if config.project_type != "game" and "godot" not in config.languages:
         return {}
-    return {
+    files = {
         "scripts/sandbox/headless-test": _script_prelude(config)
         + clean(
             """
@@ -431,6 +505,62 @@ def game_scripts(config: ProjectConfig) -> dict[str, str]:
         ),
         "scripts/playtest-host": "#!/usr/bin/env sh\nset -eu\nprintf '%s\\n' 'Run interactive GPU/audio/controller playtesting on the host with the project runtime.'\n./scripts/run.sh\n",
     }
+    if config.sandbox.gui_passthrough:
+        files["scripts/sandbox/playtest-gui"] = playtest_gui_script(config)
+    return files
+
+
+def playtest_gui_script(config: ProjectConfig) -> str:
+    return clean(
+        f"""
+        #!/usr/bin/env sh
+        set -eu
+        ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+        IMAGE={shlex.quote(image_name(config))}
+        {_host_side_guard()}
+
+        USER_ID=$(id -u)
+        RUNTIME_DIR=${{XDG_RUNTIME_DIR:-/run/user/$USER_ID}}
+        WAYLAND_NAME=${{WAYLAND_DISPLAY:-wayland-0}}
+        WAYLAND_SOCKET="$RUNTIME_DIR/$WAYLAND_NAME"
+        PIPEWIRE_SOCKET="$RUNTIME_DIR/pipewire-0"
+
+        if [ ! -S "$WAYLAND_SOCKET" ]; then
+          printf '%s\\n' 'Wayland socket not found. Use scripts/playtest-host or configure a host GUI session first.'
+          exit 2
+        fi
+        if [ ! -d /dev/dri ]; then
+          printf '%s\\n' '/dev/dri not found. GPU passthrough is unavailable; use scripts/playtest-host.'
+          exit 2
+        fi
+        if [ ! -S "$PIPEWIRE_SOCKET" ]; then
+          printf '%s\\n' 'PipeWire socket not found. Audio passthrough is unavailable; use scripts/playtest-host.'
+          exit 2
+        fi
+        if [ ! -d /dev/input ]; then
+          printf '%s\\n' '/dev/input not found. Controller passthrough is unavailable; use scripts/playtest-host.'
+          exit 2
+        fi
+
+        printf '%s\\n' 'Launching advanced sandbox GUI playtest with GPU/audio/controller passthrough.'
+        printf '%s\\n' 'This intentionally exposes selected host display/audio/input interfaces to the project container.'
+        podman run --rm -it \\
+          --label agentkit.project={shlex.quote(project_id(config))} \\
+          --userns=keep-id \\
+          --user "$USER_ID:$(id -g)" \\
+          --env AGENTKIT_INSIDE_SANDBOX=1 \\
+          --env HOME=/tmp/agentkit-home \\
+          --env WAYLAND_DISPLAY="$WAYLAND_NAME" \\
+          --env XDG_RUNTIME_DIR="/run/user/$USER_ID" \\
+          --device /dev/dri \\
+          --device /dev/input \\
+          --volume "$ROOT:/workspace:Z" \\
+          --volume "$WAYLAND_SOCKET:/run/user/$USER_ID/$WAYLAND_NAME:Z" \\
+          --volume "$PIPEWIRE_SOCKET:/run/user/$USER_ID/pipewire-0:Z" \\
+          --workdir /workspace \\
+          "$IMAGE" godot --path .
+        """
+    )
 
 
 def sandbox_readme(config: ProjectConfig) -> str:
@@ -441,8 +571,17 @@ def sandbox_readme(config: ProjectConfig) -> str:
         This sandbox uses rootless Podman with the project mounted at `/workspace`.
         It reduces host filesystem risk, but it is not a magic safety boundary: untrusted code can still damage mounted project files and misuse network access when networking is enabled.
 
+        Project containers use Podman's `--userns=keep-id` and the current host `id -u` / `id -g` so files created under `/workspace` stay owned by the real host user instead of a hard-coded container account.
+
         Run `scripts/sandbox/*` wrappers from the host project root. Once you are already inside the container,
         run project commands directly, such as `./scripts/check.sh`, instead of launching Podman again.
+
+        `scripts/sandbox/build` reuses the existing project image by default. Run `scripts/sandbox/build --rebuild`
+        when the Containerfile or toolchain package set changes.
+
+        `scripts/sandbox/clean` removes labeled project containers. Add `--image` to remove the generated image.
+        Add `--volumes --yes` only when you intentionally want to delete project cache, Codex container home,
+        and dev database volumes.
 
         The sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, GPG/SSH agents, GitHub credentials, production configs, or the host home directory by default.
         """
@@ -450,11 +589,22 @@ def sandbox_readme(config: ProjectConfig) -> str:
 
 
 def sandbox_doc(config: ProjectConfig) -> str:
-    game_note = (
-        "\nInteractive GPU/audio/controller playtesting is usually better on the host. The sandbox is for headless checks and export/test flows; GUI passthrough can be considered later as an explicit advanced profile.\n"
-        if config.project_type == "game" or "godot" in config.languages
-        else ""
-    )
+    if config.project_type == "game" or "godot" in config.languages:
+        if config.sandbox.gui_passthrough:
+            game_note = (
+                "\nAdvanced GUI passthrough is enabled. `scripts/sandbox/playtest-gui` intentionally exposes "
+                "selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project "
+                "container for interactive game playtesting. Use it only for local development workspaces and "
+                "review failures carefully. Headless checks remain the preferred autonomous Codex path.\n"
+            )
+        else:
+            game_note = (
+                "\nInteractive GPU/audio/controller playtesting is usually better on the host. The sandbox is for "
+                "headless checks and export/test flows. If container playtesting is required, regenerate or update "
+                "the sandbox with `sandbox.gui_passthrough: true` after explicitly accepting the extra host interface exposure.\n"
+            )
+    else:
+        game_note = ""
     mode_note = (
         "\nIn `toolchain` mode, Codex normally runs on the host and edits the project directory directly. The container boundary applies to build, test, database, and toolchain commands run through `scripts/sandbox/*`. Source files still live in the local project and are mounted into the container at `/workspace`.\n"
         if config.sandbox.mode == "toolchain"
@@ -474,6 +624,7 @@ def sandbox_doc(config: ProjectConfig) -> str:
         - Codex's own sandbox is still separate from the container.
         - Rootless Podman reduces host filesystem risk but does not make untrusted code magically safe.
         - The project is mounted at `/workspace`; container commands can still modify mounted project files.
+        - Project containers use `--userns=keep-id` with the current host `id -u` and `id -g` so generated workspace files stay owned by the real user instead of UID 1000 or another fixed account.
         - Do not mount production secrets, host `~/.codex`, SSH keys, browser profiles, or the host home directory.
         - Do not use `--dangerously-bypass-approvals-and-sandbox`.
         - Do not use host `danger-full-access` as the default answer to permission problems.
@@ -485,8 +636,12 @@ def sandbox_doc(config: ProjectConfig) -> str:
         ```bash
         scripts/sandbox/doctor
         scripts/sandbox/build
+        scripts/sandbox/build --rebuild  # rebuild image after toolchain changes
         scripts/sandbox/check
         scripts/sandbox/shell
+        scripts/sandbox/clean
+        scripts/sandbox/clean --image
+        scripts/sandbox/clean --volumes --yes
         ```
 
         Inside-container project commands:
@@ -690,6 +845,23 @@ def doctor_lines(root: Path) -> tuple[int, list[str]]:
         lines.append("[ok] Podman reports rootless mode")
     else:
         lines.append("[warn] Podman did not report confirmed rootless mode")
+
+    try:
+        help_result = subprocess.run(
+            ["podman", "run", "--help"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        lines.append(f"[warn] could not check Podman --userns support: {exc}")
+    else:
+        if help_result.returncode == 0 and "--userns" in (help_result.stdout or ""):
+            lines.append("[ok] Podman supports --userns=keep-id for host-owned workspace files")
+        else:
+            lines.append("[warn] Could not confirm Podman --userns support; workspace file ownership may need review")
 
     user_name = ""
     try:

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.4.8 — 2026-06-28
+
+- Added an optional `pywebview` desktop wizard (`agent-starter gui` / `agent-starter-gui`) that uses local HTML/CSS/JS and the existing core generator/validation/Codex boundaries.
+- Fixed regeneration idempotency for fresh configs by reusing existing generated metadata timestamps, preventing timestamp-only conflicts in manifest, project metadata, docs memory, and Agent Kit skill sidecar files.
+- Improved optional GUI behavior so preview panes wrap long output and the launch-Codex action closes the wizard before handing off.
+- Added `agent-starter sandbox clean` and strengthened generated `scripts/sandbox/clean`; generated sandbox images are now reused by default and rebuilt only with `scripts/sandbox/build --rebuild`.
+- Added explicit game/Godot `sandbox.gui_passthrough` opt-in for generating an advanced `scripts/sandbox/playtest-gui` helper with host GPU/audio/controller passthrough warnings.
+- Hardened generated rootless Podman wrappers to use `--userns=keep-id` with the current `id -u` / `id -g` instead of a fixed UID/GID, keeping `/workspace` files host-owned on CachyOS/Arch-style systems.
+
 ## 0.4.7 — 2026-06-28
 
 - `agent-starter sandbox preflight` now writes `.agent-starter/sandbox/preflight.json` after a successful host preflight.

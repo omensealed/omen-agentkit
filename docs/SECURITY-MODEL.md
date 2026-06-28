@@ -25,6 +25,8 @@ Answers-file command arrays require `--allow-custom-commands`. Interactive setup
 
 The kit never asks for tokens or passwords and rejects common credential-like answer strings. OAuth is executed by the official `codex` command; status checks use `codex login status` and never inspect its storage. Generated instructions prohibit secrets in prompts, source files, logs, tests, and repositories.
 
+The optional desktop GUI follows the same boundary. It is a local frontend over the existing model/generator/validator APIs, uses local static assets, and does not ask for API keys, OAuth tokens, passwords, SSH keys, browser cookies, or Codex credential files.
+
 ### Package-manager authority
 
 CachyOS package names are validated. The default bootstrap mode prints the plan only. `sudo pacman` is reached only through an explicit `--install` action after the user reviews the generated script. Automated tests never invoke it.
@@ -47,7 +49,9 @@ The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles
 
 Rootless Podman reduces host filesystem risk, but untrusted code can still modify mounted project files and can misuse network access if networking is available. Generated docs prohibit `--dangerously-bypass-approvals-and-sandbox`, host full-access as the default permission answer, production secret mounts, deployment, rsync to production, GitHub pushes, and remote resource creation without explicit approval.
 
-Generated sandbox launcher scripts are host-side wrappers unless they explicitly detect `AGENTKIT_INSIDE_SANDBOX=1` and run direct project commands. Containers receive this environment marker, and generated docs tell inside-container agents to run commands such as `./scripts/check.sh` rather than starting nested Podman. The sandbox does not mount the Podman socket and does not use privileged Podman-in-Podman behavior.
+Generated sandbox launcher scripts are host-side wrappers unless they explicitly detect `AGENTKIT_INSIDE_SANDBOX=1` and run direct project commands. Containers receive this environment marker, use rootless Podman `--userns=keep-id` plus the current `id -u` / `id -g` instead of a hard-coded UID/GID, and generated docs tell inside-container agents to run commands such as `./scripts/check.sh` rather than starting nested Podman. The sandbox does not mount the Podman socket and does not use privileged Podman-in-Podman behavior.
+
+Game/Godot GUI passthrough is an advanced opt-in profile. When enabled, the generated playtest helper intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container for local interactive playtesting. It remains off by default, does not mount host home, Codex credentials, SSH keys, or the Podman socket, and headless checks remain the preferred autonomous Codex path.
 
 Host Codex session/history import is not automatic. Generated projects prefer a no-secrets handoff summary in `docs/CODEX-HANDOFF.md` over copying raw session transcripts or auth files into the container.
 

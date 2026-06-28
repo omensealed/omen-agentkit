@@ -47,7 +47,15 @@
 - `scripts/setup-agent.sh`: official Codex install/login boundary.
 - `scripts/agent-status.sh`: Codex version and login status.
 - `scripts/new-implementation-note.sh`: appends a complete note skeleton.
-- `scripts/sandbox/*`: optional rootless Podman doctor/build/shell/exec/check/logs/clean scripts, plus Codex, database, web, and game helpers when selected by project metadata. Host-side wrappers must not accidentally run nested Podman from inside the project container.
-- `scripts/playtest-host`: optional host playtest helper for game projects where container GUI/audio/controller support is intentionally not promised.
+- `scripts/sandbox/*`: optional rootless Podman doctor/build/shell/exec/check/logs/clean scripts, plus Codex, database, web, and game helpers when selected by project metadata. Project container wrappers use `--userns=keep-id` with runtime `id -u` / `id -g` so mounted `/workspace` files remain host-owned. Host-side wrappers must not accidentally run nested Podman from inside the project container. Build reuses the project image by default; clean removes labeled project containers and can remove images/volumes only through explicit flags.
+- `scripts/sandbox/playtest-gui`: optional advanced game/Godot helper generated only when `sandbox.gui_passthrough` is true; it intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container.
+- `scripts/playtest-host`: optional host playtest helper for game projects where container GUI/audio/controller support is not enabled by default.
 
 Template changes must update generator requirements, validation, tests, this catalog, and representative generated-project inspections together.
+
+## Source-only optional GUI files
+
+- `agent_starter/gui/app.py`: lazy `pywebview` desktop launcher for the optional GUI.
+- `agent_starter/gui/bridge.py`: local JavaScript bridge over `ProjectConfig`, `generate_project()`, validation, and Codex status/launch boundaries.
+- `agent_starter/gui/static/*`: local HTML, CSS, and JavaScript assets; no CDN or remote assets.
+- `agent_starter/ui_schema.py`: shared beginner-facing page metadata and GUI payload conversion.

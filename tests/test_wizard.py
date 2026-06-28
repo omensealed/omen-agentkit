@@ -144,6 +144,56 @@ class WizardHelpersTests(unittest.TestCase):
         self.assertFalse(result.config.sandbox.codex_inside_container)
         self.assertFalse(result.config.sandbox.first_run_autonomous_prompt)
 
+    def test_game_wizard_offers_gui_passthrough_after_stack_selection(self) -> None:
+        answers = iter(
+            [
+                "new",
+                "Godot Wizard",
+                "",
+                "",
+                "Build a small Godot game.",
+                "game",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "manual",
+                "godot",
+                "none",
+                "",
+                "",
+                "",
+                "y",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
+        output: list[str] = []
+        result = run_wizard(
+            initial_path="./godot-wizard-test",
+            input_fn=self.wizard_input(list(answers)),
+            output_fn=output.append,
+            skip_agent_setup=True,
+        )
+        self.assertTrue(result.config.sandbox.enabled)
+        self.assertTrue(result.config.sandbox.gui_passthrough)
+        self.assertTrue(any("GPU/audio/controller passthrough" in line for line in output))
+
     def test_existing_project_defaults_to_no_sandbox(self) -> None:
         answers = iter(
             [

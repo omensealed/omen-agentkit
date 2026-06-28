@@ -15,7 +15,7 @@ import re
 import stat
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -184,6 +184,25 @@ def _redacted_config_dict(config: ProjectConfig) -> dict[str, object]:
     return data
 
 
+def _reuse_existing_generation_timestamps(config: ProjectConfig) -> ProjectConfig:
+    """Keep regenerated managed files stable when only default timestamps differ."""
+
+    metadata = config.root / ".agent-starter" / "project.json"
+    if not metadata.is_file():
+        return config
+    try:
+        data = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return config
+    if not isinstance(data, dict):
+        return config
+    created_at = data.get("created_at")
+    updated_at = data.get("updated_at")
+    if not isinstance(created_at, str) or not isinstance(updated_at, str):
+        return config
+    return replace(config, created_at=created_at, updated_at=updated_at)
+
+
 def _codex_scripts() -> tuple[str, str]:
     setup = templates.clean(
         r"""
@@ -307,7 +326,7 @@ def build_file_map(config: ProjectConfig) -> dict[str, str]:
     if config.github_actions:
         data[".github/workflows/ci.yml"] = templates.github_ci(config)
     if config.codex_agentkit_skill:
-        data.update(skill_files())
+        data.update(skill_files(installed_at=config.created_at, updated_at=config.updated_at))
     data.update(sandbox_file_map(config))
     license_name = config.license_name.strip().lower()
     if license_name == "mit":
@@ -388,6 +407,8 @@ def generate_project(
     root = config.root
     _validate_config_safety(config)
     _assert_safe_root(root)
+    config = _reuse_existing_generation_timestamps(config)
+    root = config.root
     report = GenerationReport(root=root)
     files = build_file_map(config)
     files[".agent-starter/manifest.json"] = _manifest(config, files)

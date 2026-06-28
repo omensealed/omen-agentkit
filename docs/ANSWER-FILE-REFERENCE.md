@@ -48,7 +48,8 @@ Unknown keys are rejected. Common credential-looking values are rejected. Custom
   "codex_inside_container": false,
   "rootless_required": true,
   "install_agentkit_skill": true,
-  "first_run_autonomous_prompt": false
+  "first_run_autonomous_prompt": false,
+  "gui_passthrough": false
 }
 ```
 
@@ -59,8 +60,9 @@ Unknown keys are rejected. Common credential-looking values are rejected. Custom
 - `rootless_required`: records that the generated sandbox expects rootless Podman.
 - `install_agentkit_skill`: records whether sandbox-aware `$agentkit` prompt flow should be available with the project.
 - `first_run_autonomous_prompt`: generates `FIRST_RUN_AUTONOMOUS.md`; keep this false unless the workspace is disposable/local and the user explicitly wants it.
+- `gui_passthrough`: advanced opt-in for game/Godot projects. When true, generate a `scripts/sandbox/playtest-gui` helper that exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container for interactive local playtesting.
 
-The sandbox does not install packages, run Podman, run Codex login, mount host `~/.codex`, mount host `~/.ssh`, or copy host sessions during generation.
+The sandbox does not install packages, run Podman, run Codex login, mount host `~/.codex`, mount host `~/.ssh`, or copy host sessions during generation. GUI/audio/controller passthrough is never enabled unless `gui_passthrough` is explicitly true.
 
 ## Git, test, and toolchain fields
 

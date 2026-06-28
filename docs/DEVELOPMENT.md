@@ -30,6 +30,8 @@ Sandbox tests use temporary generated projects and mocks. They must not require 
 
 `agent-starter sandbox preflight` is the Agent Kit-managed host setup gate for generated sandbox projects. Active sandbox launches must run it before Codex starts, including generated `START_AGENT.sh`, and tests should mock command execution rather than requiring Podman. A successful preflight writes `.agent-starter/sandbox/preflight.json`; generated prompts must not tell an already-open constrained Codex session to rerun host-side Podman bootstrap when that stamp reports success.
 
+GUI tests cover `agent_starter.ui_schema` and `agent_starter.gui.bridge` without opening a display server. `pywebview` is an optional extra, so GUI module imports must skip or degrade cleanly when it is absent, and no GUI test may start Codex login, install packages, or read credential files.
+
 No automated test invokes Codex login/advice against a real account, network installers, `sudo`, `pacman`, GitHub publication, remote pushes, or production databases. Subprocess tests use mocks or isolated commands. Installation tests replace `HOME`, `XDG_DATA_HOME`, and `XDG_BIN_HOME` with a temporary tree.
 
 The smoke test generates a fresh project, validates it, runs its generated checks, validates all shell scripts, and confirms expected Codex/project-memory files.
@@ -53,7 +55,11 @@ Generated `AGENTS.md`, `FIRST_PROMPT.md`, numbered docs, scripts, and `.codex/co
 
 Generated `.agents/skills/agentkit/SKILL.md` and `agentkit-skill.json` are part of the optional Codex skill contract. Keep `SKILL.md` concise and store Agent Kit-specific version data in the JSON sidecar.
 
-Generated `.agent-starter/sandbox/`, `scripts/sandbox/`, optional `docs/12-SANDBOX.md`, and optional `FIRST_RUN_AUTONOMOUS.md` are part of the rootless Podman sandbox contract. Keep scripts POSIX-shell friendly where practical, reviewable, project-scoped, and free of host secret mounts. Project containers are marked with `AGENTKIT_INSIDE_SANDBOX=1`; generated wrappers must either run direct project commands inside the container or refuse host-only behavior, never nested Podman. Normal tests should validate generated text and syntax without requiring Podman.
+Generated `.agent-starter/sandbox/`, `scripts/sandbox/`, optional `docs/12-SANDBOX.md`, and optional `FIRST_RUN_AUTONOMOUS.md` are part of the rootless Podman sandbox contract. Keep scripts POSIX-shell friendly where practical, reviewable, project-scoped, and free of host secret mounts. Project containers are marked with `AGENTKIT_INSIDE_SANDBOX=1` and should use Podman `--userns=keep-id` with runtime `id -u` / `id -g` rather than a fixed UID/GID so `/workspace` files remain host-owned. Generated wrappers must either run direct project commands inside the container or refuse host-only behavior, never nested Podman. Normal tests should validate generated text and syntax without requiring Podman.
+
+Generated sandbox images are project-scoped and reused by default once built. `scripts/sandbox/build --rebuild` is the explicit refresh path, and `scripts/sandbox/clean` / `agent-starter sandbox clean` are the cleanup paths. Volume deletion must stay explicit because project Codex home, cache, and dev database data may live there.
+
+The optional GUI lives under `agent_starter/gui/` and must remain a thin frontend over the core model, generator, validator, and Codex adapter. Keep static assets local, avoid CDN dependencies, and import `pywebview` only inside the GUI launcher so normal CLI use stays standard-library-only.
 
 ## Release
 

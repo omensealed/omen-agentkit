@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from time import sleep
 
 from agent_starter.generator import REQUIRED_FILES, generate_project, validate_project
 from agent_starter.models import AdvisorRecommendation, ProjectConfig
@@ -100,6 +101,19 @@ class GeneratorTests(unittest.TestCase):
             self.assertFalse(second.conflicts)
             self.assertFalse(second.created)
             self.assertTrue(second.unchanged)
+
+    def test_fresh_config_regeneration_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            first = generate_project(self.make_config(root))
+            sleep(1.1)
+            second = generate_project(self.make_config(root))
+            self.assertTrue(first.created)
+            self.assertFalse(second.conflicts)
+            self.assertFalse(second.created)
+            self.assertIn(".agent-starter/manifest.json", second.unchanged)
+            self.assertIn(".agent-starter/project.json", second.unchanged)
+            self.assertIn(".agents/skills/agentkit/agentkit-skill.json", second.unchanged)
 
     def test_conflict_is_preserved_as_proposal(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -42,6 +42,7 @@ class ProjectConfigTests(unittest.TestCase):
                     "rootless_required": True,
                     "install_agentkit_skill": True,
                     "first_run_autonomous_prompt": True,
+                    "gui_passthrough": True,
                 },
             }
         )
@@ -49,6 +50,7 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertEqual(loaded.sandbox.mode, "codex")
         self.assertTrue(loaded.sandbox.codex_inside_container)
         self.assertTrue(loaded.sandbox.first_run_autonomous_prompt)
+        self.assertTrue(loaded.sandbox.gui_passthrough)
         self.assertEqual(loaded.to_dict()["sandbox"]["engine"], "podman")
 
 

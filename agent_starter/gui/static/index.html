@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent Kit</title>
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="steps" aria-label="Wizard steps">
+        <h1>Agent Kit</h1>
+        <ol id="steps"></ol>
+      </aside>
+      <section class="panel">
+        <form id="wizard">
+          <section class="page active" data-page="welcome">
+            <h2>Welcome</h2>
+            <p>Create a Codex-ready workspace with durable docs, safe scripts, optional rootless Podman sandboxing, and the repo-local <code>$agentkit</code> skill.</p>
+          </section>
+
+          <section class="page" data-page="project">
+            <h2>Project Mode And Folder</h2>
+            <label>Project name <input name="project_name" required placeholder="Canary Notes"></label>
+            <label>Project folder <input name="project_path" required placeholder="/home/you/projects/canary-notes"></label>
+            <label>Mode
+              <select name="project_mode">
+                <option value="new">New project</option>
+                <option value="existing">Existing project renovation</option>
+              </select>
+            </label>
+            <label>Stage
+              <select name="project_stage">
+                <option value="idea">Idea</option>
+                <option value="prototype">Prototype</option>
+                <option value="active">Active</option>
+                <option value="renovation">Renovation</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="page" data-page="identity">
+            <h2>Identity And Scope</h2>
+            <label>Project type <input name="project_type" value="cli" placeholder="cli, web, game, api"></label>
+            <label>Description <textarea name="description" rows="4" placeholder="What should this become?"></textarea></label>
+            <label>Goals <textarea name="goals" rows="3" placeholder="One per line or comma-separated"></textarea></label>
+            <label>Non-goals <textarea name="non_goals" rows="3"></textarea></label>
+          </section>
+
+          <section class="page" data-page="targets">
+            <h2>Users, Platforms, Packages</h2>
+            <label>Target users <input name="target_users" placeholder="Who is this for?"></label>
+            <label>Target platforms <input name="target_platforms" value="cachyos-linux"></label>
+            <label>Packaging targets <input name="packaging_targets" value="source checkout"></label>
+          </section>
+
+          <section class="page" data-page="security">
+            <h2>Security And Data</h2>
+            <div class="grid">
+              <label><input type="checkbox" name="network_access"> Network access</label>
+              <label><input type="checkbox" name="user_accounts"> User accounts</label>
+              <label><input type="checkbox" name="handles_personal_data"> Personal data</label>
+              <label><input type="checkbox" name="handles_payments"> Payments</label>
+            </div>
+            <label>Security notes <textarea name="security_notes" rows="4"></textarea></label>
+          </section>
+
+          <section class="page" data-page="codex">
+            <h2>Codex Setup</h2>
+            <p>Authorization stays with the official Codex CLI. The GUI never asks for tokens or reads credential files.</p>
+            <label><input type="checkbox" name="codex_agentkit_skill" checked> Install the repo-local <code>$agentkit</code> Codex skill</label>
+            <label><input type="checkbox" name="setup_agent_now"> Offer Codex setup after generation</label>
+            <button type="button" id="codex-status">Check Codex status</button>
+            <pre id="codex-output"></pre>
+          </section>
+
+          <section class="page" data-page="sandbox">
+            <h2>Rootless Podman Sandbox</h2>
+            <p>Generation writes reviewable sandbox files only. It does not install packages or run Podman.</p>
+            <label><input type="checkbox" name="sandbox_enabled" checked> Create sandbox files</label>
+            <label>Sandbox mode
+              <select name="sandbox_mode">
+                <option value="toolchain">Host Codex, containerized tests/toolchain</option>
+                <option value="codex">Run Codex inside the project container</option>
+                <option value="files-only">Generate sandbox files only</option>
+                <option value="none">No sandbox</option>
+              </select>
+            </label>
+            <label><input type="checkbox" name="first_run_autonomous_prompt"> Create opt-in autonomous first-run prompt</label>
+            <label><input type="checkbox" name="gui_passthrough"> Advanced: allow generated game playtest script to mount host GPU/audio/controller interfaces</label>
+            <p>For Godot or other interactive games, headless sandbox checks can work without passthrough, but interactive container playtesting probably will not. Leave this off unless you understand the extra host interface exposure.</p>
+          </section>
+
+          <section class="page" data-page="stack">
+            <h2>Technology Stack</h2>
+            <label>Languages <input name="languages" value="python"></label>
+            <label>Database
+              <select name="database">
+                <option value="none">None</option>
+                <option value="sqlite">SQLite</option>
+                <option value="mariadb">MariaDB</option>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="existing">Existing</option>
+                <option value="undecided">Undecided</option>
+              </select>
+            </label>
+            <label>Stack notes <textarea name="stack_notes" rows="4"></textarea></label>
+            <label><input type="checkbox" name="minimal_dependencies" checked> Prefer minimal dependencies</label>
+          </section>
+
+          <section class="page" data-page="quality">
+            <h2>Testing, Git, Automation</h2>
+            <label>Tests <input name="tests" value="unit, integration"></label>
+            <label>Quality checks <input name="quality_checks" value="format, lint, tests"></label>
+            <label><input type="checkbox" name="browser_tests"> Browser tests</label>
+            <label><input type="checkbox" name="git_enabled" checked> Initialize local Git</label>
+            <label><input type="checkbox" name="github_actions"> Generate GitHub Actions workflow</label>
+            <label>GitHub remote
+              <select name="github_remote">
+                <option value="later">Decide later</option>
+                <option value="none">No remote</option>
+                <option value="create-private">Create private later by explicit action</option>
+                <option value="create-public">Create public later by explicit action</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="page" data-page="review">
+            <h2>Review</h2>
+            <button type="button" id="preview">Preview Config</button>
+            <pre id="preview-output"></pre>
+          </section>
+
+          <section class="page" data-page="generate">
+            <h2>Generate</h2>
+            <p>This will write files under the selected project folder. Existing files are preserved through proposals unless you later choose a force path in the CLI.</p>
+            <button type="button" id="generate">Generate Workspace</button>
+            <pre id="generate-output"></pre>
+          </section>
+
+          <section class="page" data-page="result">
+            <h2>Result</h2>
+            <div class="actions">
+              <button type="button" id="open-folder">Open project folder</button>
+              <button type="button" id="next-steps">View NEXT_STEPS.md</button>
+              <button type="button" id="first-prompt">Copy FIRST_PROMPT.md</button>
+              <button type="button" id="validate">Run validation</button>
+              <button type="button" id="launch-codex">Launch Codex</button>
+            </div>
+            <pre id="result-output"></pre>
+          </section>
+        </form>
+        <nav class="nav">
+          <button type="button" id="back">Back</button>
+          <button type="button" id="next">Next</button>
+        </nav>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

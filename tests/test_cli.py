@@ -20,7 +20,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             main(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("0.4.7", output.getvalue())
+        self.assertIn("0.4.8", output.getvalue())
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -153,6 +153,27 @@ class CliTests(unittest.TestCase):
             self.assertEqual(stamp["mode"], "toolchain")
             self.assertEqual(stamp["steps"], ["sandbox doctor", "sandbox build", "sandbox check"])
             self.assertIn("contains no credentials", stamp["note"])
+
+    def test_sandbox_clean_delegates_to_generated_script(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Sandbox Clean", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+
+            calls: list[list[str]] = []
+
+            def fake_run(root_arg: Path, command: list[object], **kwargs: object) -> int:
+                self.assertEqual(root_arg, root.resolve())
+                calls.append([str(item) for item in command])
+                self.assertEqual(kwargs.get("label"), "sandbox clean")
+                return 0
+
+            with mock.patch("agent_starter.cli._run_project_command", side_effect=fake_run):
+                code = main(["sandbox", "clean", str(root), "--all", "--yes"])
+            self.assertEqual(code, 0)
+            self.assertEqual(calls, [[str(root / "scripts/sandbox/clean"), "--all", "--yes"]])
 
     def test_launch_runs_sandbox_preflight_before_codex(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

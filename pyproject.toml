@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cli-ai-agent-starter-kit"
-version = "0.4.7"
+version = "0.4.8"
 description = "Generate documented OpenAI Codex CLI project workspaces for CachyOS"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,8 +17,15 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
 ]
 
+[project.optional-dependencies]
+gui = ["pywebview>=5"]
+
 [project.scripts]
 agent-starter = "agent_starter.cli:main"
+agent-starter-gui = "agent_starter.gui.app:main"
 
 [tool.setuptools]
-packages = ["agent_starter"]
+packages = ["agent_starter", "agent_starter.gui"]
+
+[tool.setuptools.package-data]
+"agent_starter.gui" = ["static/*"]
