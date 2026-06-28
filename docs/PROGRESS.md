@@ -6,7 +6,7 @@
 - [x] Stop generated prompts from telling constrained host Codex to rerun Podman bootstrap after preflight.
 - [x] Run final full source check after version bump.
 - [x] Build and verify patch release archive/checksum locally.
-- [ ] Tag and publish patch release if final archive check passes.
+- [x] Tag and publish patch release if final archive check passes.
 
 ## 0.4.6 patch release prep
 
