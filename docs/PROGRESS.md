@@ -7,7 +7,7 @@
 - [x] Update generated docs/prompts to distinguish host wrappers from inside-container project commands.
 - [x] Run final full source check after version bump.
 - [x] Build and verify patch release archive/checksum locally.
-- [ ] Tag and publish patch release if final archive check passes.
+- [x] Tag and publish patch release if final archive check passes.
 
 ## 0.4.3 patch release prep
 
