@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.4.5 — 2026-06-28
+
+- Clarified generated sandbox prompts so Codex does not request full permissions to bootstrap rootless Podman; host-side sandbox preflight should be run from a normal host terminal or Codex should be launched inside the built container.
+
 ## 0.4.4 — 2026-06-27
 
 - Added an `AGENTKIT_INSIDE_SANDBOX=1` marker to generated project container launches and taught generated sandbox wrappers to avoid accidental nested Podman when run inside the container.

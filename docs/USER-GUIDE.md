@@ -98,12 +98,16 @@ Run the local quality gate:
 If you enabled the rootless Podman sandbox, inspect it before relying on it:
 
 ```bash
-# Host project root:
+# Normal host terminal, from the host project root:
 agent-starter sandbox doctor .
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
 ```
+
+Do not widen Codex to host full-access just to make these rootless Podman wrappers work. If Codex cannot access
+`/run/user/<uid>/libpod` or another rootless Podman runtime path, run the preflight from a normal host terminal
+or launch Codex inside the built container.
 
 Inside the generated container, run project commands directly instead of host-side sandbox launchers:
 

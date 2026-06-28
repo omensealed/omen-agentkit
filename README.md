@@ -228,7 +228,7 @@ Generated sandbox files live under `.agent-starter/sandbox/` and `scripts/sandbo
 Useful generated commands:
 
 ```bash
-# Run these from the host project root:
+# Run these from a normal host terminal before relying on the sandbox:
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
@@ -236,6 +236,11 @@ scripts/sandbox/shell
 scripts/sandbox/codex-login  # only when Codex-inside-container mode was explicitly selected
 scripts/sandbox/codex
 ```
+
+Do not use Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts just to
+make rootless Podman bootstrap work from inside a constrained Codex session. If the wrapper scripts fail because
+Codex cannot access `/run/user/<uid>/libpod` or other rootless Podman runtime paths, run the host preflight from
+a normal terminal or launch Codex inside the built container.
 
 Inside the container, do not run host-side `scripts/sandbox/*` launchers. Run project commands directly:
 

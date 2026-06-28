@@ -150,7 +150,7 @@ def sandbox_note(config: ProjectConfig) -> str:
         {mode_explanation}
         It does not install host packages or run Podman during generation.
 
-        For host Codex with containerized checks:
+        Human-run host preflight before relying on the sandbox:
 
         ```bash
         scripts/sandbox/doctor
@@ -159,8 +159,10 @@ def sandbox_note(config: ProjectConfig) -> str:
         ```
 
         {codex_inside}
-        If Codex is already running inside the container, do not run host-side `scripts/sandbox/*` launchers.
-        Run project commands directly from `/workspace`, such as `./scripts/check.sh`.
+        Run those host-side wrappers from a normal host terminal, not from inside a constrained Codex session
+        that cannot access rootless Podman runtime paths. If Codex is already running inside the container, do
+        not run host-side `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such
+        as `./scripts/check.sh`.
 
         See `docs/12-SANDBOX.md` for the security model. Do not mount host secrets or use host full-access as the default answer to permission problems.
         """
@@ -182,11 +184,13 @@ def first_prompt_sandbox_note(config: ProjectConfig) -> str:
         Sandbox note: this project has rootless Podman sandbox metadata enabled. Read `docs/12-SANDBOX.md`.
         {mode_explanation}
 
-        Before implementation work that depends on build/test/toolchain execution, run `scripts/sandbox/doctor`
-        and `scripts/sandbox/build`. Use `scripts/sandbox/check` for full verification when available. Do not
-        silently fall back to host build/test commands if the sandbox was requested but `doctor`, `build`, or
-        `check` fails. Record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether
-        they want a temporary host-only fallback.
+        Sandbox bootstrap rule: do not ask for Codex full permissions or host full-access to make Podman work.
+        Host-side sandbox wrappers such as `scripts/sandbox/doctor`, `scripts/sandbox/build`, and
+        `scripts/sandbox/check` are intended to be run by the human from a normal host terminal before launching
+        Codex, or by a host Codex session only when the current Codex sandbox/approval policy already permits
+        them. If a host-side sandbox wrapper fails with a Podman runtime/sandbox error, record the exact failure
+        and stop with `BLOCKED_ENVIRONMENT`. Tell the human to run the host preflight or launch Codex inside the
+        container instead of requesting broader Codex permissions.
 
         If this Codex session is already running inside the container, do not run host-side
         `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such as

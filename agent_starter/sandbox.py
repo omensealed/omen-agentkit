@@ -501,6 +501,19 @@ def sandbox_doc(config: ProjectConfig) -> str:
         helpers such as `build`, `codex`, `codex-login`, `resume`, `codex-exec`, and database service wrappers
         refuse to run inside the container instead of attempting nested Podman.
 
+        Human host preflight:
+
+        ```bash
+        scripts/sandbox/doctor
+        scripts/sandbox/build
+        ```
+
+        Run host-side Podman wrappers from a normal host terminal before launching Codex, or from Codex only when
+        Codex's current sandbox/approval policy already permits rootless Podman access. Do not request
+        `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make these
+        wrappers work. If a host-side wrapper fails with a Podman runtime/sandbox error, record the exact failure
+        and use `BLOCKED_ENVIRONMENT` until the human runs the preflight or launches Codex inside the container.
+
         If the sandbox was requested for build/test work, do not silently fall back to host build/test commands
         when `doctor`, `build`, or `check` fails. Record the exact failure and either stop with
         `BLOCKED_ENVIRONMENT` or ask the human whether a temporary host-only fallback is acceptable.
@@ -537,8 +550,9 @@ def autonomous_prompt(config: ProjectConfig) -> str:
 
         Work rules:
 
-        - Run `scripts/sandbox/doctor` before implementation work that depends on build/test/toolchain commands.
-        - Run `scripts/sandbox/build` before relying on containerized checks.
+        - Do not ask for Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make Podman work.
+        - Host-side sandbox preflight (`scripts/sandbox/doctor` and `scripts/sandbox/build`) should be run by the human from a normal host terminal before launching Codex, or by Codex only when the current sandbox/approval policy already permits rootless Podman access.
+        - If host-side sandbox preflight is required but unavailable, stop with `BLOCKED_ENVIRONMENT` and tell the human to run the preflight or launch Codex inside the container.
         - If this Codex session is running on the host, use `scripts/sandbox/check` for full verification.
         - If this Codex session is already inside the container, run `./scripts/check.sh` and focused project commands directly; do not run host-side `scripts/sandbox/*` launchers from inside the container.
         - Do not silently fall back to host build/test commands if `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails.
