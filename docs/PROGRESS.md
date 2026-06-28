@@ -8,7 +8,7 @@
 - [x] Use rootless Podman `--userns=keep-id` and runtime host UID/GID in generated project container wrappers.
 - [x] Decide the next release version and update `VERSION`, `agent_starter.__version__`, `ProjectConfig.kit_version`, and `pyproject.toml` together.
 - [x] Run final full source check after version bump.
-- [ ] Build and verify release archive/checksum locally.
+- [x] Build and verify release archive/checksum locally.
 - [ ] Tag and publish release if final archive check passes.
 - [ ] Live-test advanced Godot GUI passthrough with a real Wayland/PipeWire/GPU/controller setup.
 
