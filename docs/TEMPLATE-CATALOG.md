@@ -6,7 +6,7 @@
 - `FIRST_PROMPT.md`: initial prompt containing the project brief, Phase 0 objective, required reading, and first deliverables.
 - `NEXT_STEPS.md`: beginner-safe post-generation command sequence, placeholder-check explanation, Codex launch path, and local-first GitHub guidance.
 - `README.md`: beginner-facing project setup, commands, current phase, and workflow.
-- `START_AGENT.sh`: validates basic project files and launches Codex with the prepared prompt.
+- `START_AGENT.sh`: validates basic project files, runs sandbox preflight for active sandbox modes, and launches Codex with the prepared prompt.
 - `.codex/config.toml`: conservative workspace sandbox, approval, and web-search defaults.
 - `.agents/skills/agentkit/SKILL.md`: optional concise repo-local Codex skill for `$agentkit` prompt expansion.
 - `.agents/skills/agentkit/agentkit-skill.json`: optional Agent Kit-managed skill version/install metadata.

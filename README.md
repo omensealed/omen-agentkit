@@ -141,6 +141,9 @@ agent-starter codex skill-status /path/to/project
 # Check generated rootless Podman sandbox readiness without installing anything
 agent-starter sandbox doctor /path/to/project
 
+# Run generated sandbox doctor/build/check before launching Codex
+agent-starter sandbox preflight /path/to/project
+
 # Add task-specific guidance
 agent-starter prompt /path/to/project --template bug --request "Fix CSV import crash"
 
@@ -229,6 +232,9 @@ Useful generated commands:
 
 ```bash
 # Run these from a normal host terminal before relying on the sandbox:
+agent-starter sandbox preflight .
+
+# The preflight command runs these generated wrappers:
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
@@ -237,10 +243,11 @@ scripts/sandbox/codex-login  # only when Codex-inside-container mode was explici
 scripts/sandbox/codex
 ```
 
-Do not use Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts just to
-make rootless Podman bootstrap work from inside a constrained Codex session. If the wrapper scripts fail because
-Codex cannot access `/run/user/<uid>/libpod` or other rootless Podman runtime paths, run the host preflight from
-a normal terminal or launch Codex inside the built container.
+`agent-starter launch` and generated `START_AGENT.sh` run the preflight automatically before launching Codex for
+active sandbox modes. Do not use Codex `danger-full-access`, host full-access, privileged containers, or Podman
+socket mounts just to make rootless Podman bootstrap work from inside a constrained Codex session. If the wrapper
+scripts fail because Codex cannot access `/run/user/<uid>/libpod` or other rootless Podman runtime paths, fix the
+host preflight from a normal terminal or launch Codex inside the built container.
 
 Inside the container, do not run host-side `scripts/sandbox/*` launchers. Run project commands directly:
 

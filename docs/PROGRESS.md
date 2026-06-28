@@ -1,5 +1,13 @@
 # Progress
 
+## 0.4.6 patch release prep
+
+- [x] Add Agent Kit-managed sandbox preflight before Codex launch.
+- [x] Update generated `START_AGENT.sh` so active sandbox projects preflight before launching Codex.
+- [x] Run final full source check after version bump.
+- [ ] Build and verify patch release archive/checksum locally.
+- [ ] Tag and publish patch release if final archive check passes.
+
 ## 0.4.5 patch release prep
 
 - [x] Prevent generated prompts from treating host-side Podman bootstrap as a Codex full-permissions problem.

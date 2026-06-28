@@ -20,7 +20,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             main(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("0.4.5", output.getvalue())
+        self.assertIn("0.4.6", output.getvalue())
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -121,6 +121,84 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("[missing] podman", output.getvalue())
             self.assertIn("Review on CachyOS", output.getvalue())
+
+    def test_sandbox_preflight_runs_generated_scripts_in_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(
+                project_name="Sandbox Preflight",
+                project_path=str(root),
+                git_enabled=False,
+            )
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+
+            calls: list[str] = []
+
+            def fake_run(root_arg: Path, command: list[Path], **kwargs: object) -> int:
+                self.assertEqual(root_arg, root.resolve())
+                calls.append(command[0].name)
+                self.assertIn("label", kwargs)
+                return 0
+
+            output = io.StringIO()
+            with mock.patch("agent_starter.cli._run_project_command", side_effect=fake_run), contextlib.redirect_stdout(output):
+                code = main(["sandbox", "preflight", str(root)])
+            self.assertEqual(code, 0)
+            self.assertEqual(calls, ["doctor", "build", "check"])
+            self.assertIn("Sandbox preflight passed", output.getvalue())
+
+    def test_launch_runs_sandbox_preflight_before_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Launch Preflight", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+
+            output = io.StringIO()
+            with (
+                mock.patch("agent_starter.cli.sandbox_preflight", return_value=2) as preflight,
+                mock.patch("agent_starter.cli.get_adapter") as get_adapter,
+                contextlib.redirect_stdout(output),
+            ):
+                code = main(["launch", str(root), "--kickoff"])
+            self.assertEqual(code, 2)
+            preflight.assert_called_once()
+            get_adapter.assert_not_called()
+
+    def test_codex_inside_container_kickoff_uses_sandbox_codex_exec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Container Kickoff", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "codex"
+            config.sandbox.codex_inside_container = True
+            config.sandbox.first_run_autonomous_prompt = True
+            self.assertTrue(generate_project(config).ok)
+
+            calls: list[list[str]] = []
+
+            def fake_run(root_arg: Path, command: list[object], **_: object) -> int:
+                self.assertEqual(root_arg, root.resolve())
+                calls.append([str(item) for item in command])
+                return 0
+
+            adapter = mock.Mock()
+            output = io.StringIO()
+            with (
+                mock.patch("agent_starter.cli.sandbox_preflight", return_value=0),
+                mock.patch("agent_starter.cli.get_adapter", return_value=adapter),
+                mock.patch("agent_starter.cli._run_project_command", side_effect=fake_run),
+                contextlib.redirect_stdout(output),
+            ):
+                code = main(["launch", str(root), "--kickoff"])
+            self.assertEqual(code, 0)
+            self.assertEqual(len(calls), 1)
+            self.assertTrue(calls[0][0].endswith("scripts/sandbox/codex-exec"))
+            self.assertEqual(calls[0][1], "FIRST_RUN_AUTONOMOUS.md")
+            adapter.auth_status.assert_not_called()
 
     def test_secret_like_answers_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

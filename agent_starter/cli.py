@@ -187,7 +187,67 @@ def _ensure_agent_authorized(*, allow_login: bool = True) -> bool:
     return adapter.login(device_auth=False)
 
 
-def launch_agent(root: Path, *, kickoff: bool = False, allow_login: bool = True) -> int:
+def _run_project_command(root: Path, command: Sequence[str], *, label: str, timeout: int = 1200) -> int:
+    _print(f"== {label} ==")
+    _print("  " + shlex.join(str(part) for part in command))
+    try:
+        result = subprocess.run(
+            [str(part) for part in command],
+            cwd=root,
+            check=False,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _print(f"[fail] {label}: {exc}")
+        return 2
+    if result.returncode != 0:
+        _print(f"[fail] {label} exited with {result.returncode}")
+    return result.returncode
+
+
+def sandbox_preflight(root: Path, *, run_check: bool = True) -> int:
+    root = root.expanduser().resolve()
+    try:
+        config = load_generated_config(root)
+    except ValueError as exc:
+        _print(f"[fail] {exc}")
+        return 2
+    if not config.sandbox.enabled or config.sandbox.mode in {"none", "files-only"}:
+        _print("Sandbox preflight skipped: this project does not have an active generated sandbox.")
+        return 0
+
+    required = [
+        root / "scripts/sandbox/doctor",
+        root / "scripts/sandbox/build",
+    ]
+    if run_check:
+        required.append(root / "scripts/sandbox/check")
+    missing = [path for path in required if not path.is_file()]
+    if missing:
+        for path in missing:
+            _print(f"[fail] Missing sandbox script: {path}")
+        return 2
+
+    _print("Agent Kit sandbox preflight")
+    _print("Running host-side rootless Podman setup before Codex launch.")
+    _print("This does not run sudo, mount host Codex auth, mount SSH keys, or request Codex full permissions.")
+    steps = [
+        (root / "scripts/sandbox/doctor", "sandbox doctor"),
+        (root / "scripts/sandbox/build", "sandbox build"),
+    ]
+    if run_check:
+        steps.append((root / "scripts/sandbox/check", "sandbox check"))
+    for path, label in steps:
+        code = _run_project_command(root, [path], label=label)
+        if code != 0:
+            _print("Sandbox preflight failed. Fix the host rootless Podman environment before launching Codex,")
+            _print("or explicitly choose a non-sandbox workflow. Do not use Codex danger-full-access to make Podman work.")
+            return code
+    _print("Sandbox preflight passed.")
+    return 0
+
+
+def launch_agent(root: Path, *, kickoff: bool = False, allow_login: bool = True, sandbox_preflight_enabled: bool = True) -> int:
     root = root.expanduser().resolve()
     config_path = root / ".agent-starter/project.json"
     if not config_path.is_file():
@@ -202,11 +262,24 @@ def launch_agent(root: Path, *, kickoff: bool = False, allow_login: bool = True)
     if config.primary_agent != "codex":
         _print("This workspace metadata was not created for the Codex-only starter kit.")
         return 2
+    if sandbox_preflight_enabled and config.sandbox.enabled and config.sandbox.mode in {"toolchain", "codex"}:
+        preflight_code = sandbox_preflight(root, run_check=True)
+        if preflight_code != 0:
+            return preflight_code
     adapter = get_adapter()
     prompt_path = root / "FIRST_PROMPT.md"
     if not prompt_path.is_file():
         _print("FIRST_PROMPT.md is missing.")
         return 2
+    if kickoff and config.sandbox.codex_inside_container:
+        prompt_name = "FIRST_RUN_AUTONOMOUS.md" if (root / "FIRST_RUN_AUTONOMOUS.md").is_file() else "FIRST_PROMPT.md"
+        codex_exec = root / "scripts/sandbox/codex-exec"
+        if not codex_exec.is_file():
+            _print("Codex-inside-container kickoff requested, but scripts/sandbox/codex-exec is missing.")
+            return 2
+        _print("Launching autonomous Codex inside the project sandbox.")
+        _print("If this fails for authorization, run scripts/sandbox/codex-login explicitly; host Codex auth is not mounted.")
+        return _run_project_command(root, [codex_exec, prompt_name], label="sandbox codex exec", timeout=3600)
     if not _ensure_agent_authorized(allow_login=allow_login):
         _print("Agent authorization was not confirmed. Run the generated ./scripts/setup-agent.sh helper.")
         return 3
@@ -1013,6 +1086,10 @@ def command_sandbox_doctor(args: argparse.Namespace) -> int:
     return code
 
 
+def command_sandbox_preflight(args: argparse.Namespace) -> int:
+    return sandbox_preflight(Path(args.project), run_check=not args.no_check)
+
+
 def _github_remote(root: Path, config: ProjectConfig) -> int:
     visibility = "private" if config.github_remote == "create-private" else "public"
     if shutil.which("gh") is None:
@@ -1085,9 +1162,7 @@ def command_new(args: argparse.Namespace) -> int:
     _print("  ./scripts/bootstrap-dev.sh --install  # installs after sudo approval")
     _print("  ./scripts/check.sh")
     if config.sandbox.enabled:
-        _print("  scripts/sandbox/doctor")
-        _print("  scripts/sandbox/build")
-        _print("  scripts/sandbox/check")
+        _print("  agent-starter sandbox preflight .")
         if config.sandbox.codex_inside_container:
             _print("  scripts/sandbox/codex-login")
             _print("  scripts/sandbox/codex")
@@ -1173,7 +1248,12 @@ def command_auth(args: argparse.Namespace) -> int:
 
 
 def command_launch(args: argparse.Namespace) -> int:
-    return launch_agent(Path(args.project), kickoff=args.kickoff, allow_login=not args.no_login)
+    return launch_agent(
+        Path(args.project),
+        kickoff=args.kickoff,
+        allow_login=not args.no_login,
+        sandbox_preflight_enabled=not args.skip_sandbox_preflight,
+    )
 
 
 def command_example(args: argparse.Namespace) -> int:
@@ -1307,6 +1387,11 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("project", nargs="?", default=".")
     launch.add_argument("--kickoff", action="store_true", help="Run FIRST_PROMPT.md as a one-shot task.")
     launch.add_argument("--no-login", action="store_true", help="Do not start authorization automatically.")
+    launch.add_argument(
+        "--skip-sandbox-preflight",
+        action="store_true",
+        help="Do not run generated sandbox doctor/build/check before launching Codex.",
+    )
     launch.set_defaults(func=command_launch)
 
     prompt = sub.add_parser("prompt", help="Generate a copy/paste Codex continuation prompt for a generated project.")
@@ -1378,6 +1463,14 @@ def build_parser() -> argparse.ArgumentParser:
     sandbox_doctor = sandbox_sub.add_parser("doctor", help="Check generated sandbox readiness without changing host setup.")
     sandbox_doctor.add_argument("project", nargs="?", default=".")
     sandbox_doctor.set_defaults(func=command_sandbox_doctor)
+
+    sandbox_preflight_parser = sandbox_sub.add_parser(
+        "preflight",
+        help="Run generated host-side sandbox doctor/build/check before launching Codex.",
+    )
+    sandbox_preflight_parser.add_argument("project", nargs="?", default=".")
+    sandbox_preflight_parser.add_argument("--no-check", action="store_true", help="Run doctor/build only, skipping sandbox check.")
+    sandbox_preflight_parser.set_defaults(func=command_sandbox_preflight)
 
     example = sub.add_parser("example-answers", help="Print or write an answers JSON example.")
     example.add_argument("--output")

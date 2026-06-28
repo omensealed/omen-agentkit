@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.4.6 — 2026-06-28
+
+- Added `agent-starter sandbox preflight` to run generated sandbox `doctor`, `build`, and `check` wrappers before Codex launch.
+- Updated `agent-starter launch` and generated `START_AGENT.sh` so active sandbox modes run preflight before Codex starts; Codex-inside-container kickoff uses `scripts/sandbox/codex-exec` after preflight.
+
 ## 0.4.5 — 2026-06-28
 
 - Clarified generated sandbox prompts so Codex does not request full permissions to bootstrap rootless Podman; host-side sandbox preflight should be run from a normal host terminal or Codex should be launched inside the built container.

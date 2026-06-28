@@ -100,14 +100,17 @@ If you enabled the rootless Podman sandbox, inspect it before relying on it:
 ```bash
 # Normal host terminal, from the host project root:
 agent-starter sandbox doctor .
+agent-starter sandbox preflight .
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
 ```
 
-Do not widen Codex to host full-access just to make these rootless Podman wrappers work. If Codex cannot access
-`/run/user/<uid>/libpod` or another rootless Podman runtime path, run the preflight from a normal host terminal
-or launch Codex inside the built container.
+`agent-starter sandbox preflight .` runs the generated `doctor`, `build`, and `check` wrappers before Codex
+starts. `agent-starter launch .` and generated `START_AGENT.sh` run this preflight automatically for active
+sandbox modes. Do not widen Codex to host full-access just to make these rootless Podman wrappers work. If Codex
+cannot access `/run/user/<uid>/libpod` or another rootless Podman runtime path, fix the preflight from a normal
+host terminal or launch Codex inside the built container.
 
 Inside the generated container, run project commands directly instead of host-side sandbox launchers:
 

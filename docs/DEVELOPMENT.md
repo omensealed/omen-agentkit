@@ -28,6 +28,8 @@ Agent Kit skill and `idea-prompt` tests use temporary generated projects. They m
 
 Sandbox tests use temporary generated projects and mocks. They must not require Podman to be installed, must not run `sudo`, must not install packages, must not perform real Codex login, and must not mount or inspect host Codex credentials, SSH keys, browser profiles, or the host home directory.
 
+`agent-starter sandbox preflight` is the Agent Kit-managed host setup gate for generated sandbox projects. Active sandbox launches must run it before Codex starts, including generated `START_AGENT.sh`, and tests should mock command execution rather than requiring Podman.
+
 No automated test invokes Codex login/advice against a real account, network installers, `sudo`, `pacman`, GitHub publication, remote pushes, or production databases. Subprocess tests use mocks or isolated commands. Installation tests replace `HOME`, `XDG_DATA_HOME`, and `XDG_BIN_HOME` with a temporary tree.
 
 The smoke test generates a fresh project, validates it, runs its generated checks, validates all shell scripts, and confirms expected Codex/project-memory files.

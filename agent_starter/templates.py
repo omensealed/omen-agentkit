@@ -143,14 +143,20 @@ def sandbox_note(config: ProjectConfig) -> str:
         else ""
     )
     return clean(
-        f"""
+        fr"""
         ## Rootless Podman sandbox
 
         This project includes a rootless Podman sandbox. Mode: `{config.sandbox.mode}`.
         {mode_explanation}
         It does not install host packages or run Podman during generation.
 
-        Human-run host preflight before relying on the sandbox:
+        Run Agent Kit's host preflight before launching Codex:
+
+        ```bash
+        agent-starter sandbox preflight .
+        ```
+
+        That command runs the generated host-side wrappers in order:
 
         ```bash
         scripts/sandbox/doctor
@@ -159,7 +165,7 @@ def sandbox_note(config: ProjectConfig) -> str:
         ```
 
         {codex_inside}
-        Run those host-side wrappers from a normal host terminal, not from inside a constrained Codex session
+        Run the preflight from a normal host terminal before Codex starts, not from inside a constrained Codex session
         that cannot access rootless Podman runtime paths. If Codex is already running inside the container, do
         not run host-side `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such
         as `./scripts/check.sh`.
@@ -180,17 +186,17 @@ def first_prompt_sandbox_note(config: ProjectConfig) -> str:
         else "In files-only mode, treat the sandbox files as reviewable assets until the user explicitly asks to use them."
     )
     return clean(
-        f"""
+        fr"""
         Sandbox note: this project has rootless Podman sandbox metadata enabled. Read `docs/12-SANDBOX.md`.
         {mode_explanation}
 
         Sandbox bootstrap rule: do not ask for Codex full permissions or host full-access to make Podman work.
-        Host-side sandbox wrappers such as `scripts/sandbox/doctor`, `scripts/sandbox/build`, and
-        `scripts/sandbox/check` are intended to be run by the human from a normal host terminal before launching
-        Codex, or by a host Codex session only when the current Codex sandbox/approval policy already permits
-        them. If a host-side sandbox wrapper fails with a Podman runtime/sandbox error, record the exact failure
-        and stop with `BLOCKED_ENVIRONMENT`. Tell the human to run the host preflight or launch Codex inside the
-        container instead of requesting broader Codex permissions.
+        Agent Kit launch paths run `agent-starter sandbox preflight .` before Codex starts when the active sandbox
+        mode is `toolchain` or `codex`. That host preflight runs `scripts/sandbox/doctor`,
+        `scripts/sandbox/build`, and `scripts/sandbox/check` from a normal host terminal context. If a host-side
+        sandbox wrapper fails with a Podman runtime/sandbox error, record the exact failure and stop with
+        `BLOCKED_ENVIRONMENT`. Tell the human to fix the host preflight or launch Codex inside the container
+        instead of requesting broader Codex permissions.
 
         If this Codex session is already running inside the container, do not run host-side
         `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such as
@@ -454,6 +460,10 @@ def next_steps(config: ProjectConfig) -> str:
         ```bash
         ./START_AGENT.sh
         ```
+
+        If the rootless Podman sandbox is active, `START_AGENT.sh` and `agent-starter launch .` run
+        `agent-starter sandbox preflight .` before Codex starts. Fix any preflight failure from this host
+        terminal instead of asking Codex for full host permissions.
 
         If Codex is missing or not authorized, use:
 
@@ -1670,14 +1680,10 @@ def run_script(config: ProjectConfig) -> str:
 
 
 def start_agent_script(config: ProjectConfig) -> str:
-    del config
-    return clean(
+    sandbox_preflight = ""
+    codex_inside = ""
+    host_codex = clean(
         r"""
-        #!/usr/bin/env bash
-        set -euo pipefail
-        ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-        cd "$ROOT"
-
         if ! command -v codex >/dev/null 2>&1; then
           printf '%s\n' 'codex is not installed. Run ./scripts/setup-agent.sh --install after reviewing it.' >&2
           exit 1
@@ -1692,6 +1698,48 @@ def start_agent_script(config: ProjectConfig) -> str:
           exec codex exec --cd "$ROOT" --sandbox workspace-write "$PROMPT"
         fi
         exec codex --cd "$ROOT" "$PROMPT"
+        """
+    )
+    if config.sandbox.enabled and config.sandbox.mode in {"toolchain", "codex"}:
+        sandbox_preflight = clean(
+            r"""
+            if command -v agent-starter >/dev/null 2>&1; then
+              agent-starter sandbox preflight "$ROOT"
+            else
+              printf '%s\n' 'agent-starter not found; running generated sandbox preflight scripts directly.'
+              scripts/sandbox/doctor
+              scripts/sandbox/build
+              scripts/sandbox/check
+            fi
+            """
+        )
+    if config.sandbox.codex_inside_container:
+        codex_inside = clean(
+            r"""
+            if [[ "${1:-}" == "--kickoff" ]]; then
+              PROMPT_FILE=FIRST_PROMPT.md
+              if [[ -f FIRST_RUN_AUTONOMOUS.md ]]; then
+                PROMPT_FILE=FIRST_RUN_AUTONOMOUS.md
+              fi
+              exec scripts/sandbox/codex-exec "$PROMPT_FILE"
+            fi
+            printf '%s\n' 'Launching Codex inside the project sandbox. Run scripts/sandbox/codex-login first if this container has not been authorized.'
+            exec scripts/sandbox/codex
+            """
+        )
+        host_codex = ""
+    return clean(
+        fr"""
+        #!/usr/bin/env bash
+        set -euo pipefail
+        ROOT=$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)
+        cd "$ROOT"
+
+        {sandbox_preflight}
+
+        {codex_inside}
+
+        {host_codex}
         """
     )
 
