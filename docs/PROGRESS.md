@@ -6,7 +6,7 @@
 - [x] Prevent accidental nested Podman from inside generated sandbox containers.
 - [x] Update generated docs/prompts to distinguish host wrappers from inside-container project commands.
 - [x] Run final full source check after version bump.
-- [ ] Build and verify patch release archive/checksum locally.
+- [x] Build and verify patch release archive/checksum locally.
 - [ ] Tag and publish patch release if final archive check passes.
 
 ## 0.4.3 patch release prep
