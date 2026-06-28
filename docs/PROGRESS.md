@@ -1,5 +1,13 @@
 # Progress
 
+## 0.4.7 patch release prep
+
+- [x] Record successful sandbox preflight with `.agent-starter/sandbox/preflight.json`.
+- [x] Stop generated prompts from telling constrained host Codex to rerun Podman bootstrap after preflight.
+- [x] Run final full source check after version bump.
+- [ ] Build and verify patch release archive/checksum locally.
+- [ ] Tag and publish patch release if final archive check passes.
+
 ## 0.4.6 patch release prep
 
 - [x] Add Agent Kit-managed sandbox preflight before Codex launch.

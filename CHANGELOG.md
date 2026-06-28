@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.7 — 2026-06-28
+
+- `agent-starter sandbox preflight` now writes `.agent-starter/sandbox/preflight.json` after a successful host preflight.
+- Updated generated first-run, autonomous, sandbox, and `$agentkit` prompts so an already-open constrained Codex session does not rerun host-side Podman bootstrap when the preflight stamp says setup already passed.
+- Clarified that `scripts/sandbox/check` should run from Codex only when the current sandbox/approval policy permits rootless Podman access; otherwise the human should run verification from a normal host terminal or use Codex-inside-container mode.
+
 ## 0.4.6 — 2026-06-28
 
 - Added `agent-starter sandbox preflight` to run generated sandbox `doctor`, `build`, and `check` wrappers before Codex launch.

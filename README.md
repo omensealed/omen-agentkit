@@ -244,10 +244,13 @@ scripts/sandbox/codex
 ```
 
 `agent-starter launch` and generated `START_AGENT.sh` run the preflight automatically before launching Codex for
-active sandbox modes. Do not use Codex `danger-full-access`, host full-access, privileged containers, or Podman
-socket mounts just to make rootless Podman bootstrap work from inside a constrained Codex session. If the wrapper
-scripts fail because Codex cannot access `/run/user/<uid>/libpod` or other rootless Podman runtime paths, fix the
-host preflight from a normal terminal or launch Codex inside the built container.
+active sandbox modes. A successful preflight writes `.agent-starter/sandbox/preflight.json`. If Codex is already
+open and that file reports `"status": "passed"`, do not make Codex rerun `scripts/sandbox/doctor` or
+`scripts/sandbox/build` from inside its own constrained sandbox. Do not use Codex `danger-full-access`, host
+full-access, privileged containers, or Podman socket mounts just to make rootless Podman bootstrap work from inside
+a constrained Codex session. If verification wrappers fail because Codex cannot access `/run/user/<uid>/libpod` or
+other rootless Podman runtime paths, fix or run verification from a normal terminal or launch Codex inside the
+built container.
 
 Inside the container, do not run host-side `scripts/sandbox/*` launchers. Run project commands directly:
 

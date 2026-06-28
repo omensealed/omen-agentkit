@@ -107,10 +107,12 @@ scripts/sandbox/check
 ```
 
 `agent-starter sandbox preflight .` runs the generated `doctor`, `build`, and `check` wrappers before Codex
-starts. `agent-starter launch .` and generated `START_AGENT.sh` run this preflight automatically for active
-sandbox modes. Do not widen Codex to host full-access just to make these rootless Podman wrappers work. If Codex
-cannot access `/run/user/<uid>/libpod` or another rootless Podman runtime path, fix the preflight from a normal
-host terminal or launch Codex inside the built container.
+starts and writes `.agent-starter/sandbox/preflight.json` after success. `agent-starter launch .` and generated
+`START_AGENT.sh` run this preflight automatically for active sandbox modes. If Codex is already open and the
+preflight stamp reports `"status": "passed"`, do not make Codex rerun `scripts/sandbox/doctor` or
+`scripts/sandbox/build` from inside its constrained sandbox. Do not widen Codex to host full-access just to make
+these rootless Podman wrappers work. If Codex cannot access `/run/user/<uid>/libpod` or another rootless Podman
+runtime path, run verification from a normal host terminal or launch Codex inside the built container.
 
 Inside the generated container, run project commands directly instead of host-side sandbox launchers:
 

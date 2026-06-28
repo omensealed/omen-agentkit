@@ -103,7 +103,8 @@ class IdeaPromptTests(unittest.TestCase):
             self.assertIn("already inside the container", result.body)
             self.assertIn("run `./scripts/check.sh`", result.body)
             self.assertIn("do not run host-side `scripts/sandbox/*` launchers", result.body)
-            self.assertIn("normal host terminal before launching Codex", result.body)
+            self.assertIn(".agent-starter/sandbox/preflight.json", result.body)
+            self.assertIn("do not rerun `scripts/sandbox/doctor`", result.body)
             self.assertIn("Do not ask for Codex `danger-full-access`", result.body)
             self.assertIn("launch Codex inside the container", result.body)
 

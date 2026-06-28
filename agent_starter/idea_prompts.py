@@ -119,10 +119,11 @@ def _sandbox_guidance(config: ProjectConfig | None) -> str:
         "",
         f"- Agent Kit sandbox mode: `{config.sandbox.mode}` using rootless Podman.",
         "- Treat enabled sandbox metadata as a requested execution boundary for build/test/toolchain work.",
-        "- Host-side Podman preflight (`scripts/sandbox/doctor` and `scripts/sandbox/build`) should be run by the human from a normal host terminal before launching Codex, or by Codex only when the current Codex sandbox/approval policy already permits rootless Podman access.",
+        "- Host-side Podman preflight should be run before Codex launch through `agent-starter sandbox preflight .`, which writes `.agent-starter/sandbox/preflight.json` after success.",
+        "- If `.agent-starter/sandbox/preflight.json` exists and reports `\"status\": \"passed\"`, do not rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside an already-open constrained Codex session.",
         "- Do not ask for Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make Podman work.",
-        "- If host-side Podman wrappers fail because Codex cannot access rootless Podman runtime paths, record the exact failure and stop with `BLOCKED_ENVIRONMENT`; tell the human to run the host preflight or launch Codex inside the container.",
-        "- From the host project root, use `scripts/sandbox/check` for full verification when available, after focused tests and successful host preflight.",
+        "- Use `scripts/sandbox/check` only when the current Codex sandbox/approval policy permits rootless Podman access.",
+        "- If host-side Podman wrappers fail because Codex cannot access rootless Podman runtime paths, record the exact failure and stop with `BLOCKED_ENVIRONMENT`; tell the human to run `agent-starter sandbox preflight .` or `scripts/sandbox/check` from a normal host terminal, or launch Codex inside the container.",
         "- If this Codex session is already inside the container, do not run host-side `scripts/sandbox/*` launchers; run `./scripts/check.sh` and focused project commands directly from `/workspace`.",
         "- Do not silently fall back to host build/test commands if `doctor`, `build`, or `check` fails; record the exact failure and stop with `BLOCKED_ENVIRONMENT`, or ask the human whether to continue host-only.",
         "- Use host scripts only when project docs say host execution is required or the human explicitly approves a temporary host-only fallback.",
@@ -215,7 +216,7 @@ def build_prompt_body(*, mode: str, idea: str, root: Path, config: ProjectConfig
         "- Make the smallest coherent change that satisfies the request.\n"
         "- Prefer existing project patterns and standard-library/local helpers over new dependencies.\n"
         "- Add or update tests when behavior changes.\n"
-        "- Run focused tests first, then `scripts/sandbox/check` when sandbox metadata enables it and Codex is on the host. If Codex is already inside the container, run `./scripts/check.sh` directly instead of host-side sandbox launchers.\n"
+        "- Run focused tests first, then `scripts/sandbox/check` only when sandbox metadata enables it and the current Codex environment can access rootless Podman. If Codex is already inside the container, run `./scripts/check.sh` directly instead of host-side sandbox launchers. If constrained host Codex cannot access Podman runtime paths, stop with `BLOCKED_ENVIRONMENT` and ask the human to run verification from a normal host terminal.\n"
         "- Update `docs/11-IMPLEMENTATION-NOTES.md` with objective, files changed, commands run, results, decisions, implications, unresolved problems, and next step.\n"
         "- Update `docs/09-PROGRESS.md` only when the project state actually changed; if this project uses `docs/10-PROGRESS.md` as its progress ledger, update that file instead.\n"
         "- Update `docs/10-DECISIONS.md` only for durable architecture, dependency, data, or workflow decisions.\n"

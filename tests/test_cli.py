@@ -20,7 +20,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             main(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("0.4.6", output.getvalue())
+        self.assertIn("0.4.7", output.getvalue())
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -148,6 +148,11 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(calls, ["doctor", "build", "check"])
             self.assertIn("Sandbox preflight passed", output.getvalue())
+            stamp = json.loads((root / ".agent-starter/sandbox/preflight.json").read_text(encoding="utf-8"))
+            self.assertEqual(stamp["status"], "passed")
+            self.assertEqual(stamp["mode"], "toolchain")
+            self.assertEqual(stamp["steps"], ["sandbox doctor", "sandbox build", "sandbox check"])
+            self.assertIn("contains no credentials", stamp["note"])
 
     def test_launch_runs_sandbox_preflight_before_codex(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

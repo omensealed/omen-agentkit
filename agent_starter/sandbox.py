@@ -504,15 +504,21 @@ def sandbox_doc(config: ProjectConfig) -> str:
         Human host preflight:
 
         ```bash
+        agent-starter sandbox preflight .
         scripts/sandbox/doctor
         scripts/sandbox/build
         ```
 
-        Run host-side Podman wrappers from a normal host terminal before launching Codex, or from Codex only when
-        Codex's current sandbox/approval policy already permits rootless Podman access. Do not request
-        `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make these
-        wrappers work. If a host-side wrapper fails with a Podman runtime/sandbox error, record the exact failure
-        and use `BLOCKED_ENVIRONMENT` until the human runs the preflight or launches Codex inside the container.
+        Run host-side Podman wrappers from a normal host terminal before launching Codex. `agent-starter sandbox
+        preflight .` writes `.agent-starter/sandbox/preflight.json` after a successful host preflight. If that
+        file exists and reports `"status": "passed"`, an already-open constrained Codex session should not rerun
+        `scripts/sandbox/doctor` or `scripts/sandbox/build`.
+
+        Codex may run `scripts/sandbox/check` only when its current sandbox/approval policy permits rootless
+        Podman access. If a host-side wrapper fails with a Podman runtime/sandbox error from inside Codex, record
+        the exact failure and use `BLOCKED_ENVIRONMENT` until the human runs the preflight/check from a normal
+        host terminal or launches Codex inside the container. Do not request `danger-full-access`, host
+        full-access, privileged containers, or Podman socket mounts to make these wrappers work.
 
         If the sandbox was requested for build/test work, do not silently fall back to host build/test commands
         when `doctor`, `build`, or `check` fails. Record the exact failure and either stop with
@@ -551,9 +557,10 @@ def autonomous_prompt(config: ProjectConfig) -> str:
         Work rules:
 
         - Do not ask for Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make Podman work.
-        - Host-side sandbox preflight (`scripts/sandbox/doctor` and `scripts/sandbox/build`) should be run by the human from a normal host terminal before launching Codex, or by Codex only when the current sandbox/approval policy already permits rootless Podman access.
-        - If host-side sandbox preflight is required but unavailable, stop with `BLOCKED_ENVIRONMENT` and tell the human to run the preflight or launch Codex inside the container.
-        - If this Codex session is running on the host, use `scripts/sandbox/check` for full verification.
+        - Host-side sandbox preflight should be run before Codex launch through `agent-starter sandbox preflight .`, which writes `.agent-starter/sandbox/preflight.json` after success.
+        - If `.agent-starter/sandbox/preflight.json` exists and reports `"status": "passed"`, do not rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside this Codex session.
+        - Use `scripts/sandbox/check` only when the current Codex sandbox/approval policy permits rootless Podman access.
+        - If host-side sandbox verification is required but unavailable from this Codex session, stop with `BLOCKED_ENVIRONMENT` and tell the human to run `agent-starter sandbox preflight .` or `scripts/sandbox/check` from a normal host terminal, or launch Codex inside the container.
         - If this Codex session is already inside the container, run `./scripts/check.sh` and focused project commands directly; do not run host-side `scripts/sandbox/*` launchers from inside the container.
         - Do not silently fall back to host build/test commands if `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails.
         - If the sandbox is unavailable, record the exact failure and stop with `BLOCKED_ENVIRONMENT` unless the human explicitly approves a host-only fallback.

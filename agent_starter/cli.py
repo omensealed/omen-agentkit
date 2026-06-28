@@ -10,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Sequence
@@ -205,6 +206,36 @@ def _run_project_command(root: Path, command: Sequence[str], *, label: str, time
     return result.returncode
 
 
+def _write_sandbox_preflight_stamp(root: Path, config: ProjectConfig, *, run_check: bool, steps: Sequence[str]) -> Path:
+    sandbox_dir = root / ".agent-starter" / "sandbox"
+    sandbox_dir.mkdir(parents=True, exist_ok=True)
+    sandbox_json_path = sandbox_dir / "sandbox.json"
+    image = ""
+    if sandbox_json_path.is_file():
+        try:
+            sandbox_data = json.loads(sandbox_json_path.read_text(encoding="utf-8"))
+            image = str(sandbox_data.get("image") or "")
+        except (OSError, json.JSONDecodeError):
+            image = ""
+    stamp = sandbox_dir / "preflight.json"
+    payload = {
+        "schema_version": 1,
+        "status": "passed",
+        "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "project": config.project_slug or config.project_name,
+        "mode": config.sandbox.mode,
+        "engine": config.sandbox.engine,
+        "run_check": run_check,
+        "steps": list(steps),
+        "image": image,
+        "note": "Host-side Agent Kit sandbox preflight completed before Codex launch. This file contains no credentials.",
+    }
+    temp = stamp.with_name(f".{stamp.name}.tmp")
+    temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp.replace(stamp)
+    return stamp
+
+
 def sandbox_preflight(root: Path, *, run_check: bool = True) -> int:
     root = root.expanduser().resolve()
     try:
@@ -243,7 +274,9 @@ def sandbox_preflight(root: Path, *, run_check: bool = True) -> int:
             _print("Sandbox preflight failed. Fix the host rootless Podman environment before launching Codex,")
             _print("or explicitly choose a non-sandbox workflow. Do not use Codex danger-full-access to make Podman work.")
             return code
+    stamp = _write_sandbox_preflight_stamp(root, config, run_check=run_check, steps=[label for _, label in steps])
     _print("Sandbox preflight passed.")
+    _print(f"Wrote {stamp}")
     return 0
 
 

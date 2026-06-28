@@ -156,7 +156,8 @@ def sandbox_note(config: ProjectConfig) -> str:
         agent-starter sandbox preflight .
         ```
 
-        That command runs the generated host-side wrappers in order:
+        That command runs the generated host-side wrappers in order and writes
+        `.agent-starter/sandbox/preflight.json` after success:
 
         ```bash
         scripts/sandbox/doctor
@@ -192,11 +193,16 @@ def first_prompt_sandbox_note(config: ProjectConfig) -> str:
 
         Sandbox bootstrap rule: do not ask for Codex full permissions or host full-access to make Podman work.
         Agent Kit launch paths run `agent-starter sandbox preflight .` before Codex starts when the active sandbox
-        mode is `toolchain` or `codex`. That host preflight runs `scripts/sandbox/doctor`,
-        `scripts/sandbox/build`, and `scripts/sandbox/check` from a normal host terminal context. If a host-side
-        sandbox wrapper fails with a Podman runtime/sandbox error, record the exact failure and stop with
-        `BLOCKED_ENVIRONMENT`. Tell the human to fix the host preflight or launch Codex inside the container
-        instead of requesting broader Codex permissions.
+        mode is `toolchain` or `codex`. A successful preflight writes
+        `.agent-starter/sandbox/preflight.json`. If that file exists and reports `"status": "passed"`, do not
+        rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside an already-open constrained Codex
+        session. Treat the host preflight as complete and continue Phase 0.
+
+        For later verification, use `scripts/sandbox/check` only when the current Codex sandbox/approval policy
+        permits rootless Podman access. If it fails with a Podman runtime/sandbox error from inside Codex, record
+        the exact failure and stop with `BLOCKED_ENVIRONMENT`; tell the human to run
+        `agent-starter sandbox preflight .` or `scripts/sandbox/check` from a normal host terminal, or launch
+        Codex inside the container. Do not request broader Codex permissions.
 
         If this Codex session is already running inside the container, do not run host-side
         `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such as
