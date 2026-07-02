@@ -141,7 +141,7 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
         github_actions=_bool(payload.get("github_actions", False)),
         github_remote=str(payload.get("github_remote") or "later").strip().lower(),
         default_branch=str(payload.get("default_branch") or "main").strip() or "main",
-        license_name=str(payload.get("license_name") or "MIT").strip(),
+        license_name=str(payload.get("license_name") or "AGPL-3.0-or-later").strip(),
         tests=_string_list(payload.get("tests")) or ["unit", "integration"],
         browser_tests=_bool(payload.get("browser_tests", False)),
         quality_checks=_string_list(payload.get("quality_checks")) or ["format", "lint", "tests"],

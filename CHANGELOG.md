@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Hardened generated rootless Podman sandbox preflight with fingerprinted freshness checks, generated `scripts/sandbox/preflight`, status reporting for missing/stale/failed/valid stamps, and logs under `.agent-starter/logs/`.
+- Added generated `scripts/sandbox/status` so Codex can check preflight validity even when `agent-starter` is not on the session `PATH`.
+- Updated generated sandbox wrappers to use project-local container home/cache directories, no-network toolchain execution by default, explicit `AGENTKIT_SANDBOX_NETWORK=default` opt-in, basic hardening flags, and consistent generated-resource labels.
+- Added generated `docs/CACHYOS-PODMAN.md` and clearer prompts/docs so Codex knows host preflight may use an adjacent `../agent-starter` launcher and should not repair rootless Podman from inside a constrained session.
+- Fixed generated `.gitignore` and rsync exclude handling so `.env.sandbox.example` and other example env files remain trackable.
+- Changed the source project and generated-project default license to `AGPL-3.0-or-later`.
+- Expanded generated Git/GitHub ignore policy so AI-facing notes, prompts, skill metadata, and starter runtime files stay local while end-user documentation remains trackable.
+- Improved generated Godot sandbox guidance with `docs/GODOT-SANDBOX.md`, `artifacts/headless/`, and a project-owned `scripts/godot-headless-test.sh` hook for future scene/export/screenshot checks without enabling GUI passthrough by default.
+
 ## 0.4.8 — 2026-06-28
 
 - Added an optional `pywebview` desktop wizard (`agent-starter gui` / `agent-starter-gui`) that uses local HTML/CSS/JS and the existing core generator/validation/Codex boundaries.

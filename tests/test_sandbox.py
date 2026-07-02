@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from agent_starter.cli import _write_sandbox_preflight_stamp
 from agent_starter.generator import generate_project
 from agent_starter.models import ProjectConfig, SandboxConfig
 from agent_starter.sandbox import doctor_lines
@@ -42,8 +43,11 @@ class SandboxGenerationTests(unittest.TestCase):
                 ".agent-starter/sandbox/sandbox.json",
                 ".agent-starter/sandbox/README.md",
                 "docs/agent-prompts/create-container-handoff.md",
+                "docs/CACHYOS-PODMAN.md",
                 "docs/12-SANDBOX.md",
                 "scripts/sandbox/doctor",
+                "scripts/sandbox/preflight",
+                "scripts/sandbox/status",
                 "scripts/sandbox/build",
                 "scripts/sandbox/shell",
                 "scripts/sandbox/exec",
@@ -63,6 +67,9 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertEqual(sandbox["mode"], "toolchain")
             self.assertEqual(sandbox["user_namespace"], "keep-id")
             self.assertIn("id -u/id -g", sandbox["runtime_user"])
+            self.assertIn("none", sandbox["network_default"])
+            self.assertIn(".agent-starter/container-home", sandbox["project_local_paths"]["container_home"])
+            self.assertIn(".agent-starter/cache", sandbox["project_local_paths"]["cache"])
 
             combined = "\n".join(
                 path.read_text(encoding="utf-8")
@@ -86,12 +93,24 @@ class SandboxGenerationTests(unittest.TestCase):
                 self.assertIn("HOST_GID=$(id -g)", text, relative)
                 self.assertIn("--userns=keep-id", text, relative)
                 self.assertIn('--user "$HOST_UID:$HOST_GID"', text, relative)
+                self.assertIn('SANDBOX_NETWORK=${AGENTKIT_SANDBOX_NETWORK:-none}', text, relative)
+                self.assertIn('--network "$SANDBOX_NETWORK"', text, relative)
+                self.assertIn("--security-opt=no-new-privileges", text, relative)
+                self.assertIn("--cap-drop=all", text, relative)
+                self.assertIn("--pids-limit", text, relative)
                 self.assertIn('--env HOME="$CONTAINER_HOME"', text, relative)
-                self.assertIn("$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U", text, relative)
+                self.assertIn('XDG_CACHE_HOME="$CONTAINER_CACHE/xdg-cache"', text, relative)
+                self.assertIn('NPM_CONFIG_CACHE="$CONTAINER_CACHE/npm"', text, relative)
+                self.assertIn('PIP_CACHE_DIR="$CONTAINER_CACHE/pip"', text, relative)
+                self.assertIn('CARGO_HOME="$CONTAINER_CACHE/cargo"', text, relative)
+                self.assertIn('GOPATH="$CONTAINER_CACHE/go"', text, relative)
+                self.assertIn('"$HOST_CONTAINER_HOME:$CONTAINER_HOME:Z"', text, relative)
+                self.assertIn('"$HOST_CACHE:$CONTAINER_CACHE:Z"', text, relative)
+                self.assertNotIn("$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U", text, relative)
 
             docs = "\n".join(
                 (root / relative).read_text(encoding="utf-8")
-                for relative in ("README.md", "NEXT_STEPS.md", "FIRST_PROMPT.md", "AGENTS.md", "docs/12-SANDBOX.md")
+                for relative in ("README.md", "NEXT_STEPS.md", "FIRST_PROMPT.md", "AGENTS.md", "docs/12-SANDBOX.md", "docs/CACHYOS-PODMAN.md")
             )
             normalized_docs = " ".join(docs.split())
             self.assertIn("rootless Podman sandbox", docs)
@@ -102,6 +121,11 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("do not ask for codex full permissions", docs.lower())
             self.assertIn("normal host terminal before launching Codex", docs)
             self.assertIn(".agent-starter/sandbox/preflight.json", docs)
+            self.assertIn("valid/current", docs)
+            self.assertIn("AGENTKIT_SANDBOX_NETWORK=default", docs)
+            self.assertIn("../agent-starter", docs)
+            self.assertIn("scripts/sandbox/status", docs)
+            self.assertIn("CachyOS rootless Podman troubleshooting", docs)
             self.assertIn("should not rerun", docs)
             self.assertIn("do not silently fall back to host build/test commands", normalized_docs.lower())
             self.assertIn("Codex still edits this project directory from the host", docs)
@@ -186,6 +210,53 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("podman image exists agentkit-sandbox-test:dev", text)
             self.assertIn("scripts/sandbox/build --rebuild", text)
             self.assertIn("--label agentkit.project=sandbox-test", text)
+            self.assertIn("--label agentkit.generated=true", text)
+
+    def test_preflight_script_uses_adjacent_agent_starter_and_writes_fingerprint_stamp(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            generate_project(self.make_config(root))
+            text = (root / "scripts/sandbox/preflight").read_text(encoding="utf-8")
+            self.assertIn('if [ -x "$ROOT/../agent-starter" ]; then', text)
+            self.assertIn('"$ROOT/../agent-starter"', text)
+            self.assertIn("sandbox_fingerprint()", text)
+            self.assertIn('"sandbox_fingerprint"', text)
+            self.assertIn('"inputs"', text)
+            self.assertIn(".agent-starter/logs", text)
+            self.assertIn("sandbox-preflight-doctor.log", text)
+            self.assertIn("sandbox-build.log", text)
+            self.assertIn("sandbox-check.log", text)
+
+    def test_status_script_delegates_or_validates_preflight_stamp(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = self.make_config(root)
+            generate_project(config)
+            text = (root / "scripts/sandbox/status").read_text(encoding="utf-8")
+            self.assertIn('exec "$AGENT_STARTER" status "$ROOT"', text)
+            self.assertIn('"$ROOT/../agent-starter"', text)
+            self.assertIn("sandbox_fingerprint()", text)
+            self.assertIn("Sandbox preflight: missing", text)
+            self.assertIn("Sandbox preflight: stale", text)
+            self.assertIn("Sandbox preflight: valid", text)
+            self.assertIn("Do not rerun scripts/sandbox/doctor", text)
+            _write_sandbox_preflight_stamp(
+                root,
+                config,
+                status="passed",
+                run_check=True,
+                steps=["sandbox doctor", "sandbox build", "sandbox check"],
+            )
+            completed = subprocess.run(
+                [str(root / "scripts/sandbox/status")],
+                cwd=root,
+                env={**os.environ, "PATH": "/usr/bin:/bin"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("Sandbox preflight: valid", completed.stdout)
 
     def test_sandbox_shell_remains_interactive_without_fixed_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -195,18 +266,24 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertNotIn("--name agentkit-sandbox-test-dev", text)
             self.assertIn("podman run --rm -it", text)
             self.assertIn("--label agentkit.project=sandbox-test", text)
+            self.assertIn("--label agentkit.generated=true", text)
             self.assertIn("if inside_agentkit_sandbox; then\n  exec /bin/sh\nfi", text)
             self.assertIn("run_interactive_project_container /bin/sh", text)
 
-    def test_clean_script_can_remove_image_and_requires_yes_for_volumes(self) -> None:
+    def test_clean_script_can_dry_run_and_requires_force(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "project"
             generate_project(self.make_config(root))
             text = (root / "scripts/sandbox/clean").read_text(encoding="utf-8")
-            self.assertIn("Usage: scripts/sandbox/clean [--image] [--volumes] [--all] [--yes]", text)
+            self.assertIn("Usage: scripts/sandbox/clean [--dry-run] [--image] [--volumes] [--all] [--force|--yes]", text)
             self.assertIn("podman ps -aq --filter label=agentkit.project=sandbox-test", text)
+            self.assertIn("--filter label=agentkit.generated=true", text)
             self.assertIn("podman image rm agentkit-sandbox-test:dev", text)
-            self.assertIn("Refusing to remove project volumes without --yes", text)
+            self.assertIn("Dry run: would remove matching generated sandbox resources only.", text)
+            self.assertIn("Refusing to remove project volumes without --force", text)
+            self.assertIn("podman image exists agentkit-sandbox-test:dev", text)
+            self.assertIn('podman volume exists "$volume"', text)
+            self.assertIn("Volume not found:", text)
             self.assertIn("agentkit_sandbox-test_codex_home", text)
 
     def test_codex_mode_generates_codex_scripts_and_project_volume(self) -> None:
@@ -231,6 +308,7 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("AGENTKIT_INSIDE_SANDBOX=1", codex_script)
             self.assertIn("--userns=keep-id", codex_script)
             self.assertIn('--user "$HOST_UID:$HOST_GID"', codex_script)
+            self.assertIn("--label agentkit.generated=true", codex_script)
             self.assertIn("--env HOME=/home/codex", codex_script)
             self.assertIn("$CODEX_HOME_VOLUME:/home/codex:Z,U", codex_script)
             self.assertIn(HOST_SIDE_MESSAGE, codex_script)
@@ -294,10 +372,21 @@ class SandboxGenerationTests(unittest.TestCase):
             )
             self.assertTrue((root / "scripts/sandbox/headless-test").is_file())
             self.assertTrue((root / "scripts/playtest-host").is_file())
+            self.assertTrue((root / "docs/GODOT-SANDBOX.md").is_file())
             self.assertFalse((root / "scripts/sandbox/playtest-gui").exists())
+            headless = (root / "scripts/sandbox/headless-test").read_text(encoding="utf-8")
+            self.assertIn("scripts/godot-headless-test.sh", headless)
+            self.assertIn("artifacts/headless", headless)
+            self.assertIn("No scripts/godot-headless-test.sh hook exists", headless)
             sandbox_doc = (root / "docs/12-SANDBOX.md").read_text(encoding="utf-8")
+            godot_doc = (root / "docs/GODOT-SANDBOX.md").read_text(encoding="utf-8")
             self.assertIn("Interactive GPU/audio/controller playtesting is usually better on the host", sandbox_doc)
             self.assertIn("sandbox.gui_passthrough: true", sandbox_doc)
+            self.assertIn("scripts/godot-headless-test.sh", sandbox_doc)
+            self.assertIn("scripts/sandbox/headless-test", godot_doc)
+            self.assertIn("artifacts/headless/", godot_doc)
+            self.assertIn("Screenshot or visual smoke tests are project-specific", godot_doc)
+            self.assertIn("Do not promise visual", godot_doc)
             self.assertNotIn("GUI forwarding is enabled", sandbox_doc)
 
     def test_game_gui_passthrough_is_explicit_opt_in(self) -> None:

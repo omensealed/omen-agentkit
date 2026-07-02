@@ -69,7 +69,7 @@ The sandbox does not install packages, run Podman, run Codex login, mount host `
 - `git_enabled`: initialize a local repository when one does not exist.
 - `github_actions`: generate `.github/workflows/ci.yml`. Starter examples default this to `false` for a local-first workflow; set it to `true` after local checks prove the project is ready for CI.
 - `github_remote`: `none`, `later`, `create-private`, or `create-public`; repository creation is interactive-only and never pushes.
-- `default_branch`, `license_name`: repository defaults. Built-in license files are generated for `MIT`, `Apache-2.0`, `BSD-3-Clause`, `GPL-3.0-or-later`, `AGPL-3.0-or-later`, and `MPL-2.0`; use `Undecided` to skip license generation. AGPL generation includes the full AGPL-3.0-or-later text plus an SPDX identifier.
+- `default_branch`, `license_name`: repository defaults. The default generated license is `AGPL-3.0-or-later`. Built-in license files are generated for `MIT`, `Apache-2.0`, `BSD-3-Clause`, `GPL-3.0-or-later`, `AGPL-3.0-or-later`, and `MPL-2.0`; use `Undecided` to skip license generation. AGPL generation includes the full AGPL-3.0-or-later text plus an SPDX identifier.
 - `tests`, `browser_tests`, `quality_checks`: expected verification layers.
 - `cachyos_packages`: extra package names after validation.
 - `custom_setup_commands`, `custom_build_commands`, `custom_test_commands`, `custom_lint_commands`: executable content requiring explicit opt-in.

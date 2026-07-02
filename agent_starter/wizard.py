@@ -499,6 +499,7 @@ def run_wizard(
         config.github_remote = "none"
     config.default_branch = p.ask("Default Git branch", default="main", required=True)
     p.output("License quick guide:")
+    p.output("  AGPL-3.0-or-later is the default for new Agent Kit projects.")
     p.output("  MIT, Apache-2.0, and BSD-3-Clause are permissive choices for broad reuse.")
     p.output("  GPL-3.0-or-later and AGPL-3.0-or-later are copyleft choices; AGPL has network-service source-sharing obligations.")
     p.output("  MPL-2.0 is file-level copyleft. Choose Undecided if you are not ready to decide.")
@@ -513,7 +514,7 @@ def run_wizard(
             ("MPL-2.0", "Mozilla Public License 2.0"),
             ("Undecided", "Leave licensing undecided (no LICENSE generated)"),
         ],
-        default="MIT",
+        default="AGPL-3.0-or-later",
     )
     config.cachyos_packages = p.ask_list("Extra trusted CachyOS package names to recommend (optional)")
 

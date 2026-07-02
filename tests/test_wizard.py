@@ -90,6 +90,7 @@ class WizardHelpersTests(unittest.TestCase):
         self.assertFalse(result.launch_after_generation)
         self.assertTrue(any("Generation preserves existing files" in line for line in output))
         self.assertTrue(any("License quick guide" in line for line in output))
+        self.assertTrue(any("AGPL-3.0-or-later is the default" in line for line in output))
         self.assertTrue(any("AGPL has network-service source-sharing obligations" in line for line in output))
         self.assertTrue(any("Local-first recommendation" in line for line in output))
 

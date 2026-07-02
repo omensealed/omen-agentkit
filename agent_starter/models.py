@@ -153,7 +153,7 @@ class ProjectConfig:
     github_actions: bool = False
     github_remote: str = "later"  # none | later | create-private | create-public
     default_branch: str = "main"
-    license_name: str = "MIT"
+    license_name: str = "AGPL-3.0-or-later"
 
     tests: list[str] = field(default_factory=lambda: ["unit", "integration"])
     browser_tests: bool = False

@@ -42,6 +42,7 @@ class GuiTests(unittest.TestCase):
             self.assertEqual(config.primary_agent, "codex")
             self.assertEqual(config.languages, ["python"])
             self.assertEqual(config.database, "sqlite")
+            self.assertEqual(config.license_name, "AGPL-3.0-or-later")
             self.assertTrue(config.codex_agentkit_skill)
             self.assertTrue(config.sandbox.enabled)
             self.assertEqual(config.sandbox.mode, "toolchain")

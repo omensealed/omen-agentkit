@@ -153,10 +153,11 @@ def sandbox_note(config: ProjectConfig) -> str:
         Run Agent Kit's host preflight before launching Codex:
 
         ```bash
-        agent-starter sandbox preflight .
+        scripts/sandbox/preflight
         ```
 
-        That command runs the generated host-side wrappers in order and writes
+        The generated preflight script uses `agent-starter` from `PATH` or an adjacent `../agent-starter`
+        launcher when available, then runs the generated host-side wrappers in order and writes
         `.agent-starter/sandbox/preflight.json` after success:
 
         ```bash
@@ -171,7 +172,11 @@ def sandbox_note(config: ProjectConfig) -> str:
         not run host-side `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such
         as `./scripts/check.sh`.
 
-        See `docs/12-SANDBOX.md` for the security model. Do not mount host secrets or use host full-access as the default answer to permission problems.
+        Trust the preflight stamp only while `agent-starter status .` or `scripts/sandbox/status` reports it as
+        valid/current. Toolchain `check` and `exec` commands default to no network; use
+        `AGENTKIT_SANDBOX_NETWORK=default ...` only after review. See `docs/12-SANDBOX.md` and
+        `docs/CACHYOS-PODMAN.md` for the security model and diagnostics.
+        Do not mount host secrets or use host full-access as the default answer to permission problems.
         """
     )
 
@@ -192,17 +197,21 @@ def first_prompt_sandbox_note(config: ProjectConfig) -> str:
         {mode_explanation}
 
         Sandbox bootstrap rule: do not ask for Codex full permissions or host full-access to make Podman work.
-        Agent Kit launch paths run `agent-starter sandbox preflight .` before Codex starts when the active sandbox
-        mode is `toolchain` or `codex`. A successful preflight writes
-        `.agent-starter/sandbox/preflight.json`. If that file exists and reports `"status": "passed"`, do not
-        rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside an already-open constrained Codex
-        session. Treat the host preflight as complete and continue Phase 0.
+        Agent Kit launch paths run `scripts/sandbox/preflight` before Codex starts when the active sandbox
+        mode is `toolchain` or `codex`. That script uses `agent-starter` from `PATH` or an adjacent
+        `../agent-starter` launcher when available. A successful preflight writes
+        `.agent-starter/sandbox/preflight.json`. Trust that file only when it is valid/current; use
+        `scripts/sandbox/status` when `agent-starter status .` is unavailable; it delegates to `../agent-starter`
+        when possible or validates the stamp fingerprint itself. If preflight is
+        valid/current, do not rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside an already-open
+        constrained Codex session. Treat the host preflight as complete and continue Phase 0.
 
         For later verification, use `scripts/sandbox/check` only when the current Codex sandbox/approval policy
-        permits rootless Podman access. If it fails with a Podman runtime/sandbox error from inside Codex, record
-        the exact failure and stop with `BLOCKED_ENVIRONMENT`; tell the human to run
-        `agent-starter sandbox preflight .` or `scripts/sandbox/check` from a normal host terminal, or launch
-        Codex inside the container. Do not request broader Codex permissions.
+        permits rootless Podman access. It defaults to no network; use
+        `AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/check` only after human review. If preflight is missing,
+        stale, failed, or a Podman runtime/sandbox error appears from inside Codex, record the exact failure and
+        stop with `BLOCKED_ENVIRONMENT`; tell the human to run `scripts/sandbox/preflight` from a normal host
+        terminal, or launch Codex inside the container. Do not request broader Codex permissions.
 
         If this Codex session is already running inside the container, do not run host-side
         `scripts/sandbox/*` launchers. Run project commands directly from `/workspace`, such as
@@ -1454,7 +1463,13 @@ def rsync_excludes(config: ProjectConfig) -> str:
         ".codex/sessions/",
         ".codex/tmp/",
     ]
-    lines.extend(gitignore_for(config.languages, config.database))
+    for pattern in gitignore_for(config.languages, config.database):
+        if pattern.startswith("!"):
+            continue
+        if pattern == ".env.*":
+            lines.extend((".env.local", ".env.*.local", ".env.*.secret"))
+            continue
+        lines.append(pattern)
     return "\n".join(unique(lines)) + "\n"
 
 
@@ -1709,14 +1724,7 @@ def start_agent_script(config: ProjectConfig) -> str:
     if config.sandbox.enabled and config.sandbox.mode in {"toolchain", "codex"}:
         sandbox_preflight = clean(
             r"""
-            if command -v agent-starter >/dev/null 2>&1; then
-              agent-starter sandbox preflight "$ROOT"
-            else
-              printf '%s\n' 'agent-starter not found; running generated sandbox preflight scripts directly.'
-              scripts/sandbox/doctor
-              scripts/sandbox/build
-              scripts/sandbox/check
-            fi
+            scripts/sandbox/preflight
             """
         )
     if config.sandbox.codex_inside_container:

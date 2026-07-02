@@ -40,7 +40,7 @@
   "github_actions": false,
   "github_remote": "none",
   "default_branch": "main",
-  "license_name": "MIT",
+  "license_name": "AGPL-3.0-or-later",
   "tests": [
     "unit",
     "integration",

@@ -20,7 +20,7 @@ A generated workspace can include:
 - optional local Git initialization and deferred GitHub Actions workflow;
 - safe handling for existing repositories through proposals and timestamped backups instead of silent replacement.
 
-The generated `docs/11-IMPLEMENTATION-NOTES.md` is the durable work journal. `AGENTS.md` instructs Codex to update it after every meaningful phase so a later session can recover the exact state of the project.
+The generated `docs/11-IMPLEMENTATION-NOTES.md` is the durable local work journal. `AGENTS.md` instructs Codex to update it after every meaningful phase so a later session can recover the exact state of the project. These AI-facing files are kept out of GitHub by default; beginner-facing product docs such as `README.md`, `SECURITY.md`, setup notes, and architecture docs remain trackable.
 
 ## Fast start on CachyOS
 
@@ -162,8 +162,9 @@ agent-starter sandbox preflight /path/to/project
 
 # Remove generated project sandbox containers, and optionally image/volumes
 agent-starter sandbox clean /path/to/project
+agent-starter sandbox clean /path/to/project --dry-run
 agent-starter sandbox clean /path/to/project --image
-agent-starter sandbox clean /path/to/project --volumes --yes
+agent-starter sandbox clean /path/to/project --volumes --force
 
 # Add task-specific guidance
 agent-starter prompt /path/to/project --template bug --request "Fix CSV import crash"
@@ -195,7 +196,7 @@ The generator treats existing source code as user data:
 - Git initialization never creates a commit or pushes a remote;
 - GitHub Actions are deferred by default for new projects so beginners can prove local setup and tests first;
 - GitHub repository creation is opt-in and never pushes code automatically.
-- local AI/runtime artifacts such as Codex logs, session JSONL files, saved prompt drafts, local-model handoff drafts, and starter proposals/backups are ignored by the generated `.gitignore` so GitHub stays focused on the project source and durable docs.
+- local AI/runtime artifacts such as `AGENTS.md`, `FIRST_PROMPT.md`, implementation notes, progress/handoff notes, Codex skill metadata, prompt drafts, Codex logs, session JSONL files, local-model handoff drafts, and starter proposals/backups are ignored by the generated `.gitignore` so GitHub stays focused on source code and end-user documentation.
 
 Answers files are also checked for common credential patterns. Custom executable commands require `--allow-custom-commands` so downloaded or copied JSON cannot silently become code execution.
 
@@ -218,7 +219,7 @@ GitHub can stay off until the project has a useful local baseline. Enable a work
 Run `agent-starter github-ready /path/to/project` before creating a remote, enabling GitHub Actions, or pushing; it checks validation, local checks, Git cleanliness, CI posture, and ignored AI-local artifacts without contacting GitHub.
 For a local or SSH source mirror, `agent-starter rsync-plan /path/to/project /path/to/project-mirror` prints the exact `rsync` command and uses `.agent-starter/rsync-excludes`; it only executes when `--run` is supplied.
 
-Inside the Codex session, `AGENTS.md` requires the agent to inspect the project docs, work one phase at a time, run the available tests, and append an implementation note before ending the phase. The helper below creates a note skeleton:
+Inside the Codex session, the local `AGENTS.md` requires the agent to inspect the project docs, work one phase at a time, run the available tests, and append an implementation note before ending the phase. Those AI notes are for local continuity, not the public repository. The helper below creates a note skeleton:
 
 ```bash
 ./scripts/new-implementation-note.sh codex "Phase objective"
@@ -254,10 +255,11 @@ Generated project containers use rootless Podman `--userns=keep-id` with the cur
 Useful generated commands:
 
 ```bash
-# Run these from a normal host terminal before relying on the sandbox:
-agent-starter sandbox preflight .
+# Run this from a normal host terminal before relying on the sandbox:
+scripts/sandbox/preflight
 
-# The preflight command runs these generated wrappers:
+# The preflight command uses agent-starter from PATH or ../agent-starter when available,
+# then runs these generated wrappers:
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
@@ -267,13 +269,27 @@ scripts/sandbox/codex
 ```
 
 `agent-starter launch` and generated `START_AGENT.sh` run the preflight automatically before launching Codex for
-active sandbox modes. A successful preflight writes `.agent-starter/sandbox/preflight.json`. If Codex is already
-open and that file reports `"status": "passed"`, do not make Codex rerun `scripts/sandbox/doctor` or
-`scripts/sandbox/build` from inside its own constrained sandbox. Do not use Codex `danger-full-access`, host
+active sandbox modes. A successful preflight writes `.agent-starter/sandbox/preflight.json` with a fingerprint of
+the generated sandbox inputs. Trust that stamp only while `agent-starter status .` or generated
+`scripts/sandbox/status` reports it as valid/current; if it is missing, stale, or failed, run
+`scripts/sandbox/preflight` from a normal host terminal. Do not make Codex
+rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside its own constrained sandbox. Do not use Codex `danger-full-access`, host
 full-access, privileged containers, or Podman socket mounts just to make rootless Podman bootstrap work from inside
 a constrained Codex session. If verification wrappers fail because Codex cannot access `/run/user/<uid>/libpod` or
 other rootless Podman runtime paths, fix or run verification from a normal terminal or launch Codex inside the
 built container.
+
+Toolchain `scripts/sandbox/check`, `exec`, and `shell` default to `--network none`. If a reviewed task truly needs
+dependency downloads or networked checks, opt in explicitly:
+
+```bash
+AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/check
+AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/exec -- npm install
+```
+
+Preflight logs are written under `.agent-starter/logs/`, including `sandbox-preflight-doctor.log`,
+`sandbox-build.log`, and `sandbox-check.log`. Generated projects also include `docs/CACHYOS-PODMAN.md` with
+rootless Podman diagnostics for CachyOS/Arch-style systems.
 
 Inside the container, do not run host-side `scripts/sandbox/*` launchers. Run project commands directly:
 
@@ -286,7 +302,7 @@ cargo test
 
 Rootless Podman reduces host filesystem risk, but it does not make untrusted code safe. It can still damage mounted project files and misuse network access when network is enabled. If the sandbox was requested and `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails, record the failure and fix the sandbox or explicitly approve a host-only fallback; do not silently treat host checks as equivalent. Do not use host `danger-full-access`, do not mount real secrets, and do not deploy, push, or rsync production targets without explicit approval.
 
-For Godot or other interactive game projects, headless sandbox checks are the default autonomous path. Real rendering, audio, and controller playtesting usually needs either host playtesting with `scripts/playtest-host` or the advanced opt-in `sandbox.gui_passthrough: true` setting. When enabled, the generated `scripts/sandbox/playtest-gui` helper intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container. Leave it off unless the project needs containerized interactive playtesting and you accept that extra host interface exposure.
+For Godot or other interactive game projects, headless sandbox checks are the default autonomous path. Godot projects also get `docs/GODOT-SANDBOX.md`, which explains the `scripts/godot-headless-test.sh` hook for future scene/export/screenshot checks and keeps artifacts under `artifacts/headless/`. Real rendering, audio, and controller playtesting usually needs either host playtesting with `scripts/playtest-host` or the advanced opt-in `sandbox.gui_passthrough: true` setting. When enabled, the generated `scripts/sandbox/playtest-gui` helper intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container. Leave it off unless the project needs containerized interactive playtesting and you accept that extra host interface exposure.
 
 If a user wants to attempt continuation with a local Ollama model, check the installed models first:
 
@@ -338,4 +354,4 @@ tests/             standard-library unittest suite
 
 ## License
 
-MIT. See `LICENSE`.
+AGPL-3.0-or-later. See `LICENSE`.

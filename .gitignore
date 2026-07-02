@@ -17,7 +17,16 @@ examples-output/
 .env
 .env.*
 !.env.example
+!.env.sandbox.example
+!.env.*.example
+
+# Local AI/maintainer working memory. Keep public GitHub focused on product source and end-user docs.
+AGENTS.md
+docs/IMPLEMENTATION-NOTES.md
+docs/PROGRESS.md
 
 # Local generated-project sandboxes used during maintainer testing.
 canary-notes2/
+canarynotes3/
 tic-tac-toe/
+tic-tac-toe2/

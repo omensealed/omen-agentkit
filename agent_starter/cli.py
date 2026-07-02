@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import re
@@ -50,12 +51,33 @@ class OllamaModelAssessment:
 
 
 AI_LOCAL_IGNORE_PATTERNS: tuple[str, ...] = (
+    "AGENTS.md",
+    "FIRST_PROMPT.md",
+    "FIRST_RUN_AUTONOMOUS.md",
+    ".agents/",
+    ".codex/",
+    ".agent-starter/",
+    "docs/09-PROGRESS.md",
+    "docs/11-IMPLEMENTATION-NOTES.md",
+    "docs/14-AGENT-HANDOFF.md",
+    "docs/AI-STACK-RECOMMENDATION.md",
+    "docs/agent-prompts/",
     ".codex/*.jsonl",
     ".codex/sessions/",
     ".agent-starter/proposals/",
     ".agent-starter/backups/",
     "NEXT_PROMPT.md",
     "LOCAL_MODEL_HANDOFF.md",
+)
+
+SANDBOX_FINGERPRINT_INPUTS: tuple[str, ...] = (
+    ".agent-starter/project.json",
+    ".agent-starter/sandbox/Containerfile",
+    ".agent-starter/sandbox/sandbox.json",
+    "scripts/sandbox/doctor",
+    "scripts/sandbox/preflight",
+    "scripts/sandbox/build",
+    "scripts/sandbox/check",
 )
 
 
@@ -206,7 +228,80 @@ def _run_project_command(root: Path, command: Sequence[str], *, label: str, time
     return result.returncode
 
 
-def _write_sandbox_preflight_stamp(root: Path, config: ProjectConfig, *, run_check: bool, steps: Sequence[str]) -> Path:
+def _run_project_command_logged(root: Path, command: Sequence[str], *, label: str, log_path: Path, timeout: int = 1200) -> int:
+    _print(f"== {label} ==")
+    _print("  " + shlex.join(str(part) for part in command))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(
+            [str(part) for part in command],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        message = f"[fail] {label}: {exc}\n"
+        log_path.write_text(message, encoding="utf-8")
+        _print(message.rstrip())
+        return 2
+    output = (result.stdout or "") + (result.stderr or "")
+    log_path.write_text(output, encoding="utf-8")
+    if output:
+        sys.stdout.write(output)
+    if result.returncode != 0:
+        _print(f"[fail] {label} exited with {result.returncode}; see {log_path}")
+    else:
+        _print(f"[ok] {label}; log: {log_path}")
+    return result.returncode
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sandbox_fingerprint(root: Path) -> tuple[str, dict[str, str]]:
+    inputs: dict[str, str] = {}
+    for relative in SANDBOX_FINGERPRINT_INPUTS:
+        path = root / relative
+        inputs[relative] = _sha256_file(path) if path.is_file() else "missing"
+    combined = hashlib.sha256()
+    for relative in SANDBOX_FINGERPRINT_INPUTS:
+        combined.update(f"{inputs[relative]}  {relative}\n".encode("utf-8"))
+    return combined.hexdigest(), inputs
+
+
+def _podman_image_id(root: Path, image: str) -> str:
+    if not image or shutil.which("podman") is None:
+        return ""
+    try:
+        result = subprocess.run(
+            ["podman", "image", "inspect", "--format", "{{.Id}}", image],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return (result.stdout or "").strip() if result.returncode == 0 else ""
+
+
+def _write_sandbox_preflight_stamp(
+    root: Path,
+    config: ProjectConfig,
+    *,
+    status: str,
+    run_check: bool,
+    steps: Sequence[str],
+    failed_step: str = "",
+) -> Path:
     sandbox_dir = root / ".agent-starter" / "sandbox"
     sandbox_dir.mkdir(parents=True, exist_ok=True)
     sandbox_json_path = sandbox_dir / "sandbox.json"
@@ -217,23 +312,48 @@ def _write_sandbox_preflight_stamp(root: Path, config: ProjectConfig, *, run_che
             image = str(sandbox_data.get("image") or "")
         except (OSError, json.JSONDecodeError):
             image = ""
+    fingerprint, inputs = sandbox_fingerprint(root)
     stamp = sandbox_dir / "preflight.json"
     payload = {
         "schema_version": 1,
-        "status": "passed",
+        "status": status,
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "project": config.project_slug or config.project_name,
         "mode": config.sandbox.mode,
         "engine": config.sandbox.engine,
+        "image": image,
+        "image_id": _podman_image_id(root, image),
         "run_check": run_check,
         "steps": list(steps),
-        "image": image,
+        "failed_step": failed_step,
+        "sandbox_fingerprint": fingerprint,
+        "inputs": inputs,
         "note": "Host-side Agent Kit sandbox preflight completed before Codex launch. This file contains no credentials.",
     }
     temp = stamp.with_name(f".{stamp.name}.tmp")
     temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temp.replace(stamp)
     return stamp
+
+
+def sandbox_preflight_state(root: Path) -> tuple[str, str, dict[str, Any]]:
+    stamp_path = root / ".agent-starter" / "sandbox" / "preflight.json"
+    if not stamp_path.is_file():
+        return "missing", "preflight stamp is missing", {}
+    try:
+        stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return "failed", f"preflight stamp is unreadable: {exc}", {}
+    if stamp.get("status") != "passed":
+        failed = str(stamp.get("failed_step") or "last preflight did not pass")
+        return "failed", failed, stamp
+    current, inputs = sandbox_fingerprint(root)
+    if stamp.get("sandbox_fingerprint") != current:
+        old_inputs = stamp.get("inputs") if isinstance(stamp.get("inputs"), dict) else {}
+        changed = [relative for relative, digest in inputs.items() if old_inputs.get(relative) != digest]
+        reason = f"{changed[0]} changed after last preflight" if changed else "sandbox fingerprint changed"
+        return "stale", reason, stamp
+    return "valid", "preflight stamp is current", stamp
 
 
 def sandbox_preflight(root: Path, *, run_check: bool = True) -> int:
@@ -262,19 +382,28 @@ def sandbox_preflight(root: Path, *, run_check: bool = True) -> int:
     _print("Agent Kit sandbox preflight")
     _print("Running host-side rootless Podman setup before Codex launch.")
     _print("This does not run sudo, mount host Codex auth, mount SSH keys, or request Codex full permissions.")
+    log_dir = root / ".agent-starter" / "logs"
     steps = [
-        (root / "scripts/sandbox/doctor", "sandbox doctor"),
-        (root / "scripts/sandbox/build", "sandbox build"),
+        (root / "scripts/sandbox/doctor", "sandbox doctor", log_dir / "sandbox-preflight-doctor.log"),
+        (root / "scripts/sandbox/build", "sandbox build", log_dir / "sandbox-build.log"),
     ]
     if run_check:
-        steps.append((root / "scripts/sandbox/check", "sandbox check"))
-    for path, label in steps:
-        code = _run_project_command(root, [path], label=label)
+        steps.append((root / "scripts/sandbox/check", "sandbox check", log_dir / "sandbox-check.log"))
+    for path, label, log_path in steps:
+        code = _run_project_command_logged(root, [path], label=label, log_path=log_path)
         if code != 0:
+            _write_sandbox_preflight_stamp(
+                root,
+                config,
+                status="failed",
+                run_check=run_check,
+                steps=[step_label for _, step_label, _ in steps],
+                failed_step=label,
+            )
             _print("Sandbox preflight failed. Fix the host rootless Podman environment before launching Codex,")
             _print("or explicitly choose a non-sandbox workflow. Do not use Codex danger-full-access to make Podman work.")
             return code
-    stamp = _write_sandbox_preflight_stamp(root, config, run_check=run_check, steps=[label for _, label in steps])
+    stamp = _write_sandbox_preflight_stamp(root, config, status="passed", run_check=run_check, steps=[label for _, label, _ in steps])
     _print("Sandbox preflight passed.")
     _print(f"Wrote {stamp}")
     return 0
@@ -401,7 +530,7 @@ def _ignored_ai_artifacts_summary(root: Path) -> tuple[str, bool]:
     missing = [pattern for pattern in AI_LOCAL_IGNORE_PATTERNS if pattern not in text]
     if missing:
         return "missing AI-local ignore pattern(s): " + ", ".join(missing), False
-    return "AI-local prompt/session/proposal artifacts are ignored", True
+    return "AI-local notes, prompts, sessions, skill metadata, and proposals are ignored", True
 
 
 def _codex_status_summary() -> tuple[str, bool]:
@@ -415,6 +544,95 @@ def _codex_status_summary() -> tuple[str, bool]:
     if status is False:
         return f"{version}; not authorized", False
     return f"{version}; authorization status unavailable", False
+
+
+def _podman_rootless_summary(root: Path) -> tuple[str, bool | None]:
+    if shutil.which("podman") is None:
+        return "podman missing", None
+    try:
+        result = subprocess.run(
+            ["podman", "info", "--format", "{{.Host.Security.Rootless}}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"unknown: {exc}", None
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        return f"unknown: {detail}", None
+    value = (result.stdout or "").strip().lower()
+    if value == "true":
+        return "yes", True
+    if value == "false":
+        return "no", False
+    return "unknown", None
+
+
+def _xdg_runtime_summary() -> tuple[str, bool | None]:
+    import os
+
+    value = os.environ.get("XDG_RUNTIME_DIR")
+    if not value:
+        return "unknown: XDG_RUNTIME_DIR is not set", None
+    path = Path(value)
+    if not path.exists():
+        return f"no: {path} does not exist", False
+    if not path.is_dir():
+        return f"no: {path} is not a directory", False
+    if not os.access(path, os.W_OK):
+        return f"no: {path} is not writable", False
+    return f"yes: {path}", True
+
+
+def _sandbox_status_lines(root: Path, config: ProjectConfig) -> list[str]:
+    if not config.sandbox.enabled or config.sandbox.mode in {"none", "files-only"}:
+        return ["[info] Sandbox: inactive/not generated"]
+    sandbox_json_path = root / ".agent-starter" / "sandbox" / "sandbox.json"
+    image = ""
+    if sandbox_json_path.is_file():
+        try:
+            sandbox_data = json.loads(sandbox_json_path.read_text(encoding="utf-8"))
+            image = str(sandbox_data.get("image") or "")
+        except (OSError, json.JSONDecodeError):
+            image = ""
+    state, reason, stamp = sandbox_preflight_state(root)
+    image_exists = "unknown"
+    image_id = ""
+    if image and shutil.which("podman") is not None:
+        try:
+            exists = subprocess.run(["podman", "image", "exists", image], cwd=root, check=False, timeout=15)
+            image_exists = "yes" if exists.returncode == 0 else "no"
+        except (OSError, subprocess.TimeoutExpired):
+            image_exists = "unknown"
+        image_id = _podman_image_id(root, image)
+    rootless, _ = _podman_rootless_summary(root)
+    runtime, _ = _xdg_runtime_summary()
+    created = str(stamp.get("created_at") or "never") if stamp else "never"
+    lines = [
+        f"[info] Sandbox mode: {config.sandbox.mode}",
+        f"[info] Sandbox engine: {config.sandbox.engine}",
+        f"[{'ok' if state == 'valid' else 'warn'}] Sandbox preflight: {state}",
+        f"[info] Sandbox preflight reason: {reason}",
+        f"[info] Last preflight: {created}",
+        f"[info] Sandbox image: {image or 'unknown'}",
+        f"[info] Sandbox image exists: {image_exists}",
+    ]
+    if image_id:
+        lines.append(f"[info] Sandbox image id: {image_id}")
+    lines.extend(
+        [
+            f"[info] Rootless Podman: {rootless}",
+            f"[info] XDG_RUNTIME_DIR writable: {runtime}",
+        ]
+    )
+    if state == "valid":
+        lines.append("[info] Sandbox next step: use scripts/sandbox/check for project verification when Codex approval policy permits it.")
+    else:
+        lines.append("[info] Sandbox next step: run `agent-starter sandbox preflight .` from a normal host terminal.")
+    return lines
 
 
 def command_status(args: argparse.Namespace) -> int:
@@ -455,6 +673,9 @@ def command_status(args: argparse.Namespace) -> int:
 
     ignore_text, ignore_ok = _ignored_ai_artifacts_summary(root)
     _print(f"[{'ok' if ignore_ok else 'warn'}] AI-local artifacts: {ignore_text}")
+
+    for line in _sandbox_status_lines(root, config):
+        _print(line)
 
     if not validation.ok:
         _print("Next action: restore or merge missing generated files, then run `agent-starter validate`.")
@@ -1136,6 +1357,10 @@ def command_sandbox_clean(args: argparse.Namespace) -> int:
         command.append("--volumes")
     if args.all:
         command.append("--all")
+    if args.dry_run:
+        command.append("--dry-run")
+    if args.force:
+        command.append("--force")
     if args.yes:
         command.append("--yes")
     return _run_project_command(root, command, label="sandbox clean")
@@ -1348,7 +1573,7 @@ def command_example(args: argparse.Namespace) -> int:
         "github_actions": False,
         "github_remote": "later",
         "default_branch": "main",
-        "license_name": "MIT",
+        "license_name": "AGPL-3.0-or-later",
         "tests": ["unit", "integration"],
         "browser_tests": False,
         "codex_agentkit_skill": True,
@@ -1543,10 +1768,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sandbox_clean = sandbox_sub.add_parser("clean", help="Run the generated project sandbox cleanup helper.")
     sandbox_clean.add_argument("project", nargs="?", default=".")
+    sandbox_clean.add_argument("--dry-run", action="store_true", help="Show matching sandbox resources without removing them.")
     sandbox_clean.add_argument("--image", action="store_true", help="Also remove the generated project image.")
-    sandbox_clean.add_argument("--volumes", action="store_true", help="Also remove project cache/Codex-home/database volumes; requires --yes.")
-    sandbox_clean.add_argument("--all", action="store_true", help="Remove containers, image, and volumes; volumes require --yes.")
-    sandbox_clean.add_argument("--yes", action="store_true", help="Confirm removal of project volumes.")
+    sandbox_clean.add_argument("--volumes", action="store_true", help="Also remove project Codex-home/database volumes; requires --force or --yes.")
+    sandbox_clean.add_argument("--all", action="store_true", help="Remove containers, image, and volumes; volumes require --force or --yes.")
+    sandbox_clean.add_argument("--force", action="store_true", help="Remove matching generated sandbox resources.")
+    sandbox_clean.add_argument("--yes", action="store_true", help="Backward-compatible alias to confirm project volume removal.")
     sandbox_clean.set_defaults(func=command_sandbox_clean)
 
     example = sub.add_parser("example-answers", help="Print or write an answers JSON example.")

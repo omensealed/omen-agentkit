@@ -18,6 +18,7 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertEqual(loaded.updated_at, config.updated_at)
         self.assertEqual(loaded.advisor.summary, "Small stack")
         self.assertEqual(loaded.primary_agent, "codex")
+        self.assertEqual(loaded.license_name, "AGPL-3.0-or-later")
 
     def test_unknown_saved_fields_are_ignored_by_model_loader(self) -> None:
         loaded = ProjectConfig.from_dict({"project_name": "Example", "retired_field": "ignored"})

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,15 +65,84 @@ class GeneratorTests(unittest.TestCase):
             self.assertTrue(report.ok, report.validation_errors)
             gitignore = (root / ".gitignore").read_text(encoding="utf-8")
             for expected in (
+                "AGENTS.md",
+                "FIRST_PROMPT.md",
+                "FIRST_RUN_AUTONOMOUS.md",
+                ".agents/",
+                ".codex/",
+                ".agent-starter/",
                 ".codex/*.jsonl",
                 ".codex/sessions/",
                 ".agent-starter/runtime.json",
                 ".agent-starter/proposals/",
+                "docs/09-PROGRESS.md",
+                "docs/11-IMPLEMENTATION-NOTES.md",
+                "docs/14-AGENT-HANDOFF.md",
+                "docs/AI-STACK-RECOMMENDATION.md",
+                "docs/agent-prompts/",
+                "!.env.sandbox.example",
+                "!.env.*.example",
                 "NEXT_PROMPT.md",
                 "LOCAL_MODEL_HANDOFF.md",
                 "*-codex-prompt.md",
             ):
                 self.assertIn(expected, gitignore)
+            rsync_excludes = (root / ".agent-starter/rsync-excludes").read_text(encoding="utf-8")
+            self.assertNotIn("!.env.sandbox.example", rsync_excludes)
+            self.assertNotIn(".env.sandbox.example", rsync_excludes)
+            self.assertNotIn("\n.env.*\n", f"\n{rsync_excludes}\n")
+            self.assertIn(".env.local", rsync_excludes)
+
+    def test_generated_gitignore_keeps_ai_memory_local_and_enduser_docs_trackable(self) -> None:
+        if shutil.which("git") is None:
+            self.skipTest("git is not installed")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = self.make_config(root)
+            report = generate_project(config)
+            self.assertTrue(report.ok, report.validation_errors)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+            ignored = (
+                "AGENTS.md",
+                "FIRST_PROMPT.md",
+                "docs/09-PROGRESS.md",
+                "docs/11-IMPLEMENTATION-NOTES.md",
+                "docs/14-AGENT-HANDOFF.md",
+                "docs/agent-prompts/example.md",
+                ".agent-starter/project.json",
+                ".agents/skills/agentkit/SKILL.md",
+                ".codex/config.toml",
+            )
+            check_ignored = subprocess.run(["git", "check-ignore", *ignored], cwd=root, text=True, capture_output=True)
+            self.assertEqual(check_ignored.returncode, 0, check_ignored.stderr)
+            for expected in ignored:
+                self.assertIn(expected, check_ignored.stdout)
+
+            trackable = (
+                "README.md",
+                "NEXT_STEPS.md",
+                "LICENSE",
+                "SECURITY.md",
+                "CONTRIBUTING.md",
+                "docs/00-PROJECT-BRIEF.md",
+                "docs/01-REQUIREMENTS.md",
+                "docs/02-ARCHITECTURE.md",
+                "docs/10-DECISIONS.md",
+                "docs/12-RELEASE-CHECKLIST.md",
+            )
+            check_trackable = subprocess.run(["git", "check-ignore", *trackable], cwd=root, text=True, capture_output=True)
+            self.assertEqual(check_trackable.returncode, 1, check_trackable.stdout)
+
+    def test_default_license_is_agpl(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            report = generate_project(self.make_config(root))
+            self.assertTrue(report.ok, report.validation_errors)
+            license_text = (root / "LICENSE").read_text(encoding="utf-8")
+            self.assertIn("SPDX-License-Identifier: AGPL-3.0-or-later", license_text)
+            saved = json.loads((root / ".agent-starter/project.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["license_name"], "AGPL-3.0-or-later")
 
     def test_spdx_license_files_are_generated(self) -> None:
         cases = {

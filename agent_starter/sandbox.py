@@ -15,6 +15,8 @@ from .toolchains import packages_for, unique
 
 SANDBOX_EXECUTABLES: tuple[str, ...] = (
     "scripts/sandbox/doctor",
+    "scripts/sandbox/preflight",
+    "scripts/sandbox/status",
     "scripts/sandbox/build",
     "scripts/sandbox/shell",
     "scripts/sandbox/exec",
@@ -63,11 +65,16 @@ def sandbox_json(config: ProjectConfig) -> str:
         "workspace_mount": "/workspace",
         "user_namespace": "keep-id",
         "runtime_user": "host uid/gid from id -u/id -g",
+        "network_default": "none for toolchain check/exec/shell; build and explicit Codex container flows may use network",
         "image": image_name(config),
         "volumes": {
-            "cache": volume_name(config, "cache"),
             "codex_home": volume_name(config, "codex_home"),
             "db_data": volume_name(config, "db_data"),
+        },
+        "project_local_paths": {
+            "container_home": ".agent-starter/container-home",
+            "cache": ".agent-starter/cache",
+            "logs": ".agent-starter/logs",
         },
         "advanced_passthrough": {
             "gpu_audio_controller": config.sandbox.gui_passthrough,
@@ -154,18 +161,43 @@ def _script_prelude(config: ProjectConfig) -> str:
         HOST_UID=$(id -u)
         HOST_GID=$(id -g)
         CONTAINER_HOME=/tmp/agentkit-home
+        CONTAINER_CACHE=/tmp/agentkit-cache
+        HOST_CONTAINER_HOME="$ROOT/.agent-starter/container-home"
+        HOST_CACHE="$ROOT/.agent-starter/cache"
+        LOG_DIR="$ROOT/.agent-starter/logs"
+        SANDBOX_NETWORK=${{AGENTKIT_SANDBOX_NETWORK:-none}}
 
         {_inside_sandbox_helper()}
 
+        prepare_project_container_dirs() {{
+          mkdir -p "$HOST_CONTAINER_HOME" "$HOST_CACHE" "$LOG_DIR"
+        }}
+
         run_project_container() {{
+          prepare_project_container_dirs
           podman run --rm \\
             --label agentkit.project={shlex.quote(project_id(config))} \\
+            --label agentkit.generated=true \\
             --userns=keep-id \\
             --user "$HOST_UID:$HOST_GID" \\
+            --network "$SANDBOX_NETWORK" \\
+            --security-opt=no-new-privileges \\
+            --cap-drop=all \\
+            --pids-limit "${{AGENTKIT_SANDBOX_PIDS_LIMIT:-512}}" \\
             --env AGENTKIT_INSIDE_SANDBOX=1 \\
             --env HOME="$CONTAINER_HOME" \\
+            --env XDG_CACHE_HOME="$CONTAINER_CACHE/xdg-cache" \\
+            --env XDG_CONFIG_HOME="$CONTAINER_HOME/.config" \\
+            --env NPM_CONFIG_CACHE="$CONTAINER_CACHE/npm" \\
+            --env YARN_CACHE_FOLDER="$CONTAINER_CACHE/yarn" \\
+            --env PNPM_HOME="$CONTAINER_CACHE/pnpm-home" \\
+            --env PIP_CACHE_DIR="$CONTAINER_CACHE/pip" \\
+            --env COMPOSER_CACHE_DIR="$CONTAINER_CACHE/composer" \\
+            --env CARGO_HOME="$CONTAINER_CACHE/cargo" \\
+            --env GOPATH="$CONTAINER_CACHE/go" \\
             --volume "$ROOT:/workspace:Z" \\
-            --volume "$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U" \\
+            --volume "$HOST_CONTAINER_HOME:$CONTAINER_HOME:Z" \\
+            --volume "$HOST_CACHE:$CONTAINER_CACHE:Z" \\
             --workdir /workspace \\
             "$IMAGE" "$@"
         }}
@@ -222,9 +254,223 @@ def build_script(config: ProjectConfig) -> str:
         fi
         podman build \\
           --label agentkit.project={shlex.quote(project_id(config))} \\
+          --label agentkit.generated=true \\
           -t {shlex.quote(image_name(config))} \\
           -f "$ROOT/.agent-starter/sandbox/Containerfile" \\
           "$ROOT"
+        """
+    )
+
+
+def preflight_script(config: ProjectConfig) -> str:
+    inputs = (
+        ".agent-starter/project.json",
+        ".agent-starter/sandbox/Containerfile",
+        ".agent-starter/sandbox/sandbox.json",
+        "scripts/sandbox/doctor",
+        "scripts/sandbox/preflight",
+        "scripts/sandbox/build",
+        "scripts/sandbox/check",
+    )
+    input_args = " ".join(shlex.quote(item) for item in inputs)
+    input_json_lines = "\n".join(
+        f"            printf '    \"{item}\": \"%s\"{',' if index < len(inputs) - 1 else ''}\\n' \"$(hash_file {shlex.quote(item)})\""
+        for index, item in enumerate(inputs)
+    )
+    return clean(
+        f"""
+        #!/usr/bin/env sh
+        set -eu
+        ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+        cd "$ROOT"
+        {_host_side_guard()}
+
+        find_agent_starter() {{
+          if command -v agent-starter >/dev/null 2>&1; then
+            command -v agent-starter
+            return 0
+          fi
+          if [ -x "$ROOT/../agent-starter" ]; then
+            printf '%s\\n' "$ROOT/../agent-starter"
+            return 0
+          fi
+          return 1
+        }}
+
+        if AGENT_STARTER=$(find_agent_starter); then
+          exec "$AGENT_STARTER" sandbox preflight "$ROOT" "$@"
+        fi
+
+        LOG_DIR="$ROOT/.agent-starter/logs"
+        SANDBOX_DIR="$ROOT/.agent-starter/sandbox"
+        STAMP="$SANDBOX_DIR/preflight.json"
+        IMAGE={shlex.quote(image_name(config))}
+        mkdir -p "$LOG_DIR" "$SANDBOX_DIR"
+        RUN_CHECK=true
+        if [ "${{1:-}}" = "--no-check" ]; then
+          RUN_CHECK=false
+        fi
+
+        hash_file() {{
+          if [ -f "$1" ]; then
+            sha256sum "$1" | awk '{{print $1}}'
+          else
+            printf '%s' missing
+          fi
+        }}
+
+        sandbox_fingerprint() {{
+          for relative in {input_args}
+          do
+            printf '%s  %s\\n' "$(hash_file "$relative")" "$relative"
+          done | sha256sum | awk '{{print $1}}'
+        }}
+
+        write_stamp() {{
+          status=$1
+          failed_step=${{2:-}}
+          image_id=$(podman image inspect --format '{{{{.Id}}}}' "$IMAGE" 2>/dev/null || true)
+          fingerprint=$(sandbox_fingerprint)
+          tmp="$STAMP.tmp.$$"
+          {{
+            printf '%s\\n' '{{'
+            printf '  "schema_version": 1,\\n'
+            printf '  "created_at": "%s",\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '  "status": "%s",\\n' "$status"
+            printf '  "failed_step": "%s",\\n' "$failed_step"
+            printf '  "mode": "%s",\\n' {shlex.quote(config.sandbox.mode)}
+            printf '  "engine": "podman",\\n'
+            printf '  "image": "%s",\\n' "$IMAGE"
+            printf '  "image_id": "%s",\\n' "$image_id"
+            printf '  "run_check": %s,\\n' "$RUN_CHECK"
+            printf '  "sandbox_fingerprint": "%s",\\n' "$fingerprint"
+            printf '  "inputs": {{\\n'
+        {input_json_lines}
+            printf '\\n  }},\\n'
+            printf '  "note": "Generated fallback preflight completed on the host. This file contains no credentials."\\n'
+            printf '%s\\n' '}}'
+          }} > "$tmp"
+          mv "$tmp" "$STAMP"
+        }}
+
+        run_logged() {{
+          label=$1
+          script=$2
+          log=$3
+          printf '== %s ==\\n' "$label"
+          if "$script" >"$log" 2>&1; then
+            cat "$log"
+            return 0
+          fi
+          code=$?
+          cat "$log"
+          write_stamp failed "$label"
+          printf '[fail] %s exited with %s. See %s\\n' "$label" "$code" "$log" >&2
+          exit "$code"
+        }}
+
+        run_logged "sandbox doctor" "$ROOT/scripts/sandbox/doctor" "$LOG_DIR/sandbox-preflight-doctor.log"
+        run_logged "sandbox build" "$ROOT/scripts/sandbox/build" "$LOG_DIR/sandbox-build.log"
+        if [ "$RUN_CHECK" = true ]; then
+          run_logged "sandbox check" "$ROOT/scripts/sandbox/check" "$LOG_DIR/sandbox-check.log"
+        fi
+        write_stamp passed ""
+        printf 'Sandbox preflight passed. Wrote %s\\n' "$STAMP"
+        """
+    )
+
+
+def status_script(config: ProjectConfig) -> str:
+    inputs = (
+        ".agent-starter/project.json",
+        ".agent-starter/sandbox/Containerfile",
+        ".agent-starter/sandbox/sandbox.json",
+        "scripts/sandbox/doctor",
+        "scripts/sandbox/preflight",
+        "scripts/sandbox/build",
+        "scripts/sandbox/check",
+    )
+    input_args = " ".join(shlex.quote(item) for item in inputs)
+    return clean(
+        f"""
+        #!/usr/bin/env sh
+        set -eu
+        ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+        cd "$ROOT"
+
+        inside_agentkit_sandbox() {{
+          test "${{AGENTKIT_INSIDE_SANDBOX:-}}" = "1" && return 0
+          test -f /run/.containerenv && return 0
+          test -f /.dockerenv && return 0
+          return 1
+        }}
+
+        find_agent_starter() {{
+          if command -v agent-starter >/dev/null 2>&1; then
+            command -v agent-starter
+            return 0
+          fi
+          if ! inside_agentkit_sandbox && [ -x "$ROOT/../agent-starter" ]; then
+            printf '%s\\n' "$ROOT/../agent-starter"
+            return 0
+          fi
+          return 1
+        }}
+
+        if AGENT_STARTER=$(find_agent_starter); then
+          exec "$AGENT_STARTER" status "$ROOT"
+        fi
+
+        STAMP="$ROOT/.agent-starter/sandbox/preflight.json"
+        IMAGE={shlex.quote(image_name(config))}
+
+        hash_file() {{
+          if [ -f "$1" ]; then
+            sha256sum "$1" | awk '{{print $1}}'
+          else
+            printf '%s' missing
+          fi
+        }}
+
+        sandbox_fingerprint() {{
+          for relative in {input_args}
+          do
+            printf '%s  %s\\n' "$(hash_file "$relative")" "$relative"
+          done | sha256sum | awk '{{print $1}}'
+        }}
+
+        json_string() {{
+          key=$1
+          sed -n 's/^[[:space:]]*"'$key'"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "$STAMP" | head -n 1
+        }}
+
+        printf 'Sandbox mode: %s\\n' {shlex.quote(config.sandbox.mode)}
+        printf 'Sandbox engine: podman\\n'
+        printf 'Sandbox image: %s\\n' "$IMAGE"
+        if [ ! -f "$STAMP" ]; then
+          printf 'Sandbox preflight: missing\\n'
+          printf 'Reason: .agent-starter/sandbox/preflight.json is missing. Run scripts/sandbox/preflight from a normal host terminal.\\n'
+          exit 0
+        fi
+
+        status=$(json_string status)
+        created=$(json_string created_at)
+        recorded=$(json_string sandbox_fingerprint)
+        current=$(sandbox_fingerprint)
+        printf 'Last preflight: %s\\n' "${{created:-unknown}}"
+        if [ "$status" != passed ]; then
+          failed=$(json_string failed_step)
+          printf 'Sandbox preflight: failed\\n'
+          printf 'Reason: %s\\n' "${{failed:-last preflight did not pass}}"
+          exit 0
+        fi
+        if [ "$recorded" != "$current" ]; then
+          printf 'Sandbox preflight: stale\\n'
+          printf 'Reason: generated sandbox files changed after last preflight. Run scripts/sandbox/preflight from a normal host terminal.\\n'
+          exit 0
+        fi
+        printf 'Sandbox preflight: valid\\n'
+        printf 'Reason: preflight stamp is current. Do not rerun scripts/sandbox/doctor or scripts/sandbox/build from a constrained Codex session.\\n'
         """
     )
 
@@ -238,14 +484,30 @@ def shell_script(config: ProjectConfig) -> str:
         fi
 
         run_interactive_project_container() {
+          prepare_project_container_dirs
           podman run --rm -it \\
             --label agentkit.project=__PROJECT_ID__ \\
+            --label agentkit.generated=true \\
             --userns=keep-id \\
             --user "$HOST_UID:$HOST_GID" \\
+            --network "$SANDBOX_NETWORK" \\
+            --security-opt=no-new-privileges \\
+            --cap-drop=all \\
+            --pids-limit "${AGENTKIT_SANDBOX_PIDS_LIMIT:-512}" \\
             --env AGENTKIT_INSIDE_SANDBOX=1 \\
             --env HOME="$CONTAINER_HOME" \\
+            --env XDG_CACHE_HOME="$CONTAINER_CACHE/xdg-cache" \\
+            --env XDG_CONFIG_HOME="$CONTAINER_HOME/.config" \\
+            --env NPM_CONFIG_CACHE="$CONTAINER_CACHE/npm" \\
+            --env YARN_CACHE_FOLDER="$CONTAINER_CACHE/yarn" \\
+            --env PNPM_HOME="$CONTAINER_CACHE/pnpm-home" \\
+            --env PIP_CACHE_DIR="$CONTAINER_CACHE/pip" \\
+            --env COMPOSER_CACHE_DIR="$CONTAINER_CACHE/composer" \\
+            --env CARGO_HOME="$CONTAINER_CACHE/cargo" \\
+            --env GOPATH="$CONTAINER_CACHE/go" \\
             --volume "$ROOT:/workspace:Z" \\
-            --volume "$CACHE_VOLUME:$CONTAINER_HOME/.cache:Z,U" \\
+            --volume "$HOST_CONTAINER_HOME:$CONTAINER_HOME:Z" \\
+            --volume "$HOST_CACHE:$CONTAINER_CACHE:Z" \\
             --workdir /workspace \\
             "$IMAGE" "$@"
         }
@@ -306,38 +568,65 @@ def clean_script(config: ProjectConfig) -> str:
         printf '%s\\n' 'This removes stopped sandbox containers only. Volumes are preserved.'
         REMOVE_IMAGE=0
         REMOVE_VOLUMES=0
+        DRY_RUN=0
+        FORCE=0
         YES=0
         for arg in "$@"; do
           case "$arg" in
             --image) REMOVE_IMAGE=1 ;;
             --volumes) REMOVE_VOLUMES=1 ;;
             --all) REMOVE_IMAGE=1; REMOVE_VOLUMES=1 ;;
-            --yes) YES=1 ;;
+            --dry-run) DRY_RUN=1 ;;
+            --force) FORCE=1; YES=1 ;;
+            --yes) YES=1; FORCE=1 ;;
             *)
               printf 'Unknown option: %s\\n' "$arg"
-              printf '%s\\n' 'Usage: scripts/sandbox/clean [--image] [--volumes] [--all] [--yes]'
+              printf '%s\\n' 'Usage: scripts/sandbox/clean [--dry-run] [--image] [--volumes] [--all] [--force|--yes]'
               exit 2
               ;;
           esac
         done
-        containers=$(podman ps -aq --filter label=agentkit.project={shlex.quote(project_id(config))} || true)
+        containers=$(podman ps -aq --filter label=agentkit.project={shlex.quote(project_id(config))} --filter label=agentkit.generated=true || true)
+        if [ "$DRY_RUN" -eq 1 ]; then
+          printf '%s\\n' 'Dry run: would remove matching generated sandbox resources only.'
+          printf 'Containers with labels agentkit.project=%s, agentkit.generated=true:\\n' {shlex.quote(project_id(config))}
+          if [ -n "$containers" ]; then printf '%s\\n' "$containers"; else printf '%s\\n' '  none'; fi
+          if [ "$REMOVE_IMAGE" -eq 1 ]; then printf 'Image: %s\\n' {shlex.quote(image_name(config))}; fi
+          if [ "$REMOVE_VOLUMES" -eq 1 ]; then printf 'Volumes: %s %s\\n' {shlex.quote(volume_name(config, "codex_home"))} {shlex.quote(volume_name(config, "db_data"))}; fi
+          exit 0
+        fi
+        if [ "$FORCE" -ne 1 ]; then
+          printf '%s\\n' 'No resources removed. Re-run with --dry-run to inspect or --force to remove matching generated resources.'
+          exit 0
+        fi
         if [ -n "$containers" ]; then
           printf '%s\\n' "$containers" | xargs podman rm -f
         else
           printf '%s\\n' 'No labeled project containers found.'
         fi
         if [ "$REMOVE_IMAGE" -eq 1 ]; then
-          podman image rm {shlex.quote(image_name(config))} || true
+          if podman image exists {shlex.quote(image_name(config))}; then
+            podman image rm {shlex.quote(image_name(config))}
+          else
+            printf 'Image not found: %s\\n' {shlex.quote(image_name(config))}
+          fi
         fi
         if [ "$REMOVE_VOLUMES" -eq 1 ]; then
           if [ "$YES" -ne 1 ]; then
-            printf '%s\\n' 'Refusing to remove project volumes without --yes.'
+            printf '%s\\n' 'Refusing to remove project volumes without --force or --yes.'
             printf '%s\\n' 'Volumes can contain Codex container auth/session state, caches, and dev database data.'
             exit 2
           fi
-          podman volume rm {shlex.quote(volume_name(config, "cache"))} {shlex.quote(volume_name(config, "codex_home"))} {shlex.quote(volume_name(config, "db_data"))} || true
+          for volume in {shlex.quote(volume_name(config, "codex_home"))} {shlex.quote(volume_name(config, "db_data"))}
+          do
+            if podman volume exists "$volume"; then
+              podman volume rm "$volume"
+            else
+              printf 'Volume not found: %s\\n' "$volume"
+            fi
+          done
         else
-          printf '%s\\n' 'Volumes preserved. Add --volumes --yes to remove cache, Codex home, and database volumes.'
+          printf '%s\\n' 'Volumes preserved. Add --volumes --force to remove Codex home and database volumes.'
         fi
         """
     )
@@ -356,7 +645,7 @@ def codex_script(config: ProjectConfig) -> str:
         + project_id(config)
         + '-codex --label agentkit.project='
         + project_id(config)
-        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" '
+        + ' --label agentkit.generated=true --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" '
         '--workdir /workspace '
         + shlex.quote(image_name(config))
         + ' codex --sandbox workspace-write --ask-for-approval on-request\n'
@@ -371,7 +660,7 @@ def codex_login_script(config: ProjectConfig) -> str:
         + _host_side_guard()
         + '\npodman run --rm -it --label agentkit.project='
         + project_id(config)
-        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
+        + ' --label agentkit.generated=true --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
         + shlex.quote(image_name(config))
         + " codex login --device-auth\n"
     )
@@ -384,7 +673,7 @@ def resume_script(config: ProjectConfig) -> str:
         + _host_side_guard()
         + '\npodman run --rm -it --label agentkit.project='
         + project_id(config)
-        + ' --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
+        + ' --label agentkit.generated=true --userns=keep-id --user "$HOST_UID:$HOST_GID" --env AGENTKIT_INSIDE_SANDBOX=1 --env HOME=/home/codex --volume "$ROOT:/workspace:Z" --volume "$CODEX_HOME_VOLUME:/home/codex:Z,U" --workdir /workspace '
         + shlex.quote(image_name(config))
         + " codex resume --last\n"
     )
@@ -398,6 +687,7 @@ def codex_exec_script(config: ProjectConfig) -> str:
         test -f "$ROOT/$PROMPT_FILE"
         podman run --rm -i \\
           --label agentkit.project={shlex.quote(project_id(config))} \\
+          --label agentkit.generated=true \\
           --userns=keep-id \\
           --user "$HOST_UID:$HOST_GID" \\
           --env AGENTKIT_INSIDE_SANDBOX=1 \\
@@ -447,7 +737,7 @@ def db_scripts(config: ProjectConfig) -> dict[str, str]:
         test -f .env.sandbox || cp .env.sandbox.example .env.sandbox
         podman volume exists {shlex.quote(volume)} || podman volume create {shlex.quote(volume)}
         . ./.env.sandbox
-        podman run -d --replace --name {shlex.quote(name)} --label agentkit.project={shlex.quote(project_id(config))} {env_file} \\
+        podman run -d --replace --name {shlex.quote(name)} --label agentkit.project={shlex.quote(project_id(config))} --label agentkit.generated=true {env_file} \\
           {env_block} \\
           -p 127.0.0.1:${{SANDBOX_DB_PORT:-{port}}}:{port} \\
           --volume {shlex.quote(volume)}:{data_path}:Z \\
@@ -496,18 +786,75 @@ def game_scripts(config: ProjectConfig) -> dict[str, str]:
             """
 
             if inside_agentkit_sandbox; then
-              printf '%s\\n' 'Already inside the Agent Kit sandbox. Running ./scripts/check.sh directly.'
+              mkdir -p artifacts/headless .agent-starter/logs
+              if [ -x ./scripts/godot-headless-test.sh ]; then
+                printf '%s\\n' 'Already inside the Agent Kit sandbox. Running project Godot headless test hook.'
+                exec ./scripts/godot-headless-test.sh
+              fi
+              printf '%s\\n' 'Already inside the Agent Kit sandbox. No scripts/godot-headless-test.sh hook exists; running ./scripts/check.sh.'
+              printf '%s\\n' 'Add scripts/godot-headless-test.sh when the project has a real scene/export/screenshot test.'
               exec ./scripts/check.sh
             fi
 
-            run_project_container ./scripts/check.sh
+            run_project_container sh -lc 'mkdir -p artifacts/headless .agent-starter/logs; if [ -x ./scripts/godot-headless-test.sh ]; then ./scripts/godot-headless-test.sh; else printf "%s\\n" "No scripts/godot-headless-test.sh hook exists; running ./scripts/check.sh."; printf "%s\\n" "Add scripts/godot-headless-test.sh when the project has a real scene/export/screenshot test."; ./scripts/check.sh; fi'
             """
         ),
         "scripts/playtest-host": "#!/usr/bin/env sh\nset -eu\nprintf '%s\\n' 'Run interactive GPU/audio/controller playtesting on the host with the project runtime.'\n./scripts/run.sh\n",
     }
+    if "godot" in config.languages:
+        files["docs/GODOT-SANDBOX.md"] = godot_sandbox_doc(config)
     if config.sandbox.gui_passthrough:
         files["scripts/sandbox/playtest-gui"] = playtest_gui_script(config)
     return files
+
+
+def godot_sandbox_doc(config: ProjectConfig) -> str:
+    del config
+    return clean(
+        """
+        # Godot sandbox testing
+
+        The default autonomous path for Godot work is headless verification inside the project sandbox:
+
+        ```bash
+        scripts/sandbox/headless-test
+        ```
+
+        From inside the container, run direct project commands instead of host-side sandbox launchers:
+
+        ```bash
+        ./scripts/check.sh
+        ./scripts/godot-headless-test.sh
+        ```
+
+        `scripts/sandbox/headless-test` creates `artifacts/headless/` and then:
+
+        - runs `scripts/godot-headless-test.sh` if the project adds that executable hook;
+        - otherwise falls back to `./scripts/check.sh` and prints that a real Godot hook is still needed.
+
+        Add `scripts/godot-headless-test.sh` after the project has an actual Godot project, scene, export preset,
+        or test runner. That hook is the right place for commands such as:
+
+        ```bash
+        godot --headless --path . --quit
+        godot --headless --path . --export-release "Linux/X11" artifacts/headless/game.x86_64
+        ```
+
+        Screenshot or visual smoke tests are project-specific. A future hook may launch a deterministic test scene,
+        save screenshots or logs under `artifacts/headless/`, and exit nonzero on failures. Do not promise visual
+        coverage until that hook exists and has been verified.
+
+        Interactive rendering, audio, and controller checks usually belong on the host with:
+
+        ```bash
+        scripts/playtest-host
+        ```
+
+        The optional `scripts/sandbox/playtest-gui` helper is generated only when `sandbox.gui_passthrough` is
+        explicitly enabled. It exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces
+        to the project container, so keep it off unless the user accepts that extra local exposure.
+        """
+    )
 
 
 def playtest_gui_script(config: ProjectConfig) -> str:
@@ -546,6 +893,7 @@ def playtest_gui_script(config: ProjectConfig) -> str:
         printf '%s\\n' 'This intentionally exposes selected host display/audio/input interfaces to the project container.'
         podman run --rm -it \\
           --label agentkit.project={shlex.quote(project_id(config))} \\
+          --label agentkit.generated=true \\
           --userns=keep-id \\
           --user "$USER_ID:$(id -g)" \\
           --env AGENTKIT_INSIDE_SANDBOX=1 \\
@@ -573,8 +921,16 @@ def sandbox_readme(config: ProjectConfig) -> str:
 
         Project containers use Podman's `--userns=keep-id` and the current host `id -u` / `id -g` so files created under `/workspace` stay owned by the real host user instead of a hard-coded container account.
 
+        Toolchain commands default to no network. Use `AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/check`
+        or `AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/exec ...` only when a reviewed task needs network access.
+
         Run `scripts/sandbox/*` wrappers from the host project root. Once you are already inside the container,
         run project commands directly, such as `./scripts/check.sh`, instead of launching Podman again.
+
+        `scripts/sandbox/preflight` is the host setup gate. It uses `agent-starter` from `PATH` or `../agent-starter`
+        when available; otherwise it runs the generated host-side scripts and writes `.agent-starter/sandbox/preflight.json`.
+        The stamp is trustworthy only while its sandbox fingerprint matches the current generated sandbox files.
+        Use `scripts/sandbox/status` to check that validity even when `agent-starter` is not on this session's `PATH`.
 
         `scripts/sandbox/build` reuses the existing project image by default. Run `scripts/sandbox/build --rebuild`
         when the Containerfile or toolchain package set changes.
@@ -584,6 +940,81 @@ def sandbox_readme(config: ProjectConfig) -> str:
         and dev database volumes.
 
         The sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, GPG/SSH agents, GitHub credentials, production configs, or the host home directory by default.
+        """
+    )
+
+
+def cachyos_podman_doc(config: ProjectConfig) -> str:
+    return clean(
+        f"""
+        # CachyOS rootless Podman troubleshooting
+
+        This project was generated for rootless Podman sandbox mode `{config.sandbox.mode}`.
+
+        ## Normal model
+
+        | Thing | Runs where | Has OpenAI login? | Can access host project files? | Network default |
+        |---|---|---:|---:|---:|
+        | `START_AGENT.sh` | Host | Yes | Yes | Host normal |
+        | `agent-starter sandbox preflight` | Host | No | Yes | Build may use network |
+        | `scripts/sandbox/check` | Podman container | No | `/workspace` only | No network |
+        | Host Codex default mode | Host Codex sandbox | Yes | Workspace only | Codex policy |
+        | Codex-inside-container mode | Podman container | Explicit opt-in | `/workspace` only | Container policy |
+
+        Recommended default flow:
+
+        ```text
+        host terminal
+          └─ START_AGENT.sh
+               ├─ scripts/sandbox/preflight
+               │    ├─ doctor
+               │    ├─ build image
+               │    └─ check project
+               ├─ write valid preflight stamp
+               └─ launch Codex on host
+                    └─ Codex edits project files
+                         └─ Codex may run scripts/sandbox/check when approvals allow it
+        ```
+
+        Advanced opt-in flow:
+
+        ```text
+        host terminal
+          └─ scripts/sandbox/codex
+               └─ podman run ...
+                    └─ Codex runs inside /workspace
+        ```
+
+        ## Host checks
+
+        Review these from a normal host terminal:
+
+        ```bash
+        sudo pacman -S --needed podman passt fuse-overlayfs
+        podman info
+        podman run --rm docker.io/library/alpine:latest true
+        grep "^$USER:" /etc/subuid /etc/subgid
+        podman system migrate
+        ```
+
+        Do not run generated sandbox scripts with `sudo`. Do not try to repair rootless Podman from inside Codex
+        workspace sandboxing. If `/run/user/<uid>/libpod` is read-only, missing, or permission-denied, treat it as a
+        host/rootless Podman runtime environment problem, not a project code problem.
+
+        If `/etc/subuid` or `/etc/subgid` mappings changed, `podman system migrate` may be needed. Review Podman
+        documentation before running migration commands on a machine with important existing containers.
+
+        ## Logs
+
+        Preflight writes logs under:
+
+        ```text
+        .agent-starter/logs/sandbox-preflight-doctor.log
+        .agent-starter/logs/sandbox-build.log
+        .agent-starter/logs/sandbox-check.log
+        ```
+
+        These logs are intended for troubleshooting and should not contain secrets.
         """
     )
 
@@ -601,7 +1032,8 @@ def sandbox_doc(config: ProjectConfig) -> str:
             game_note = (
                 "\nInteractive GPU/audio/controller playtesting is usually better on the host. The sandbox is for "
                 "headless checks and export/test flows. If container playtesting is required, regenerate or update "
-                "the sandbox with `sandbox.gui_passthrough: true` after explicitly accepting the extra host interface exposure.\n"
+                "the sandbox with `sandbox.gui_passthrough: true` after explicitly accepting the extra host interface exposure. "
+                "For Godot projects, see `docs/GODOT-SANDBOX.md` for the `scripts/godot-headless-test.sh` hook and headless artifact guidance.\n"
             )
     else:
         game_note = ""
@@ -625,6 +1057,7 @@ def sandbox_doc(config: ProjectConfig) -> str:
         - Rootless Podman reduces host filesystem risk but does not make untrusted code magically safe.
         - The project is mounted at `/workspace`; container commands can still modify mounted project files.
         - Project containers use `--userns=keep-id` with the current host `id -u` and `id -g` so generated workspace files stay owned by the real user instead of UID 1000 or another fixed account.
+        - Toolchain `check`, `exec`, and `shell` default to `--network none`; use `AGENTKIT_SANDBOX_NETWORK=default ...` only after review.
         - Do not mount production secrets, host `~/.codex`, SSH keys, browser profiles, or the host home directory.
         - Do not use `--dangerously-bypass-approvals-and-sandbox`.
         - Do not use host `danger-full-access` as the default answer to permission problems.
@@ -635,6 +1068,8 @@ def sandbox_doc(config: ProjectConfig) -> str:
 
         ```bash
         scripts/sandbox/doctor
+        scripts/sandbox/preflight
+        scripts/sandbox/status
         scripts/sandbox/build
         scripts/sandbox/build --rebuild  # rebuild image after toolchain changes
         scripts/sandbox/check
@@ -665,9 +1100,12 @@ def sandbox_doc(config: ProjectConfig) -> str:
         ```
 
         Run host-side Podman wrappers from a normal host terminal before launching Codex. `agent-starter sandbox
-        preflight .` writes `.agent-starter/sandbox/preflight.json` after a successful host preflight. If that
-        file exists and reports `"status": "passed"`, an already-open constrained Codex session should not rerun
+        preflight .` writes `.agent-starter/sandbox/preflight.json` after a successful host preflight. Trust that
+        file only when `agent-starter status .` reports the sandbox preflight is valid/current. If it is valid,
+        an already-open constrained Codex session should not rerun
         `scripts/sandbox/doctor` or `scripts/sandbox/build`.
+        If `agent-starter` is not on `PATH`, use `scripts/sandbox/status`; it delegates to `../agent-starter`
+        when available or validates the stamp fingerprint itself.
 
         Codex may run `scripts/sandbox/check` only when its current sandbox/approval policy permits rootless
         Podman access. If a host-side wrapper fails with a Podman runtime/sandbox error from inside Codex, record
@@ -688,6 +1126,7 @@ def sandbox_doc(config: ProjectConfig) -> str:
         ```
 
         `codex-login` uses device authorization inside the project-specific Codex home volume. Do not copy host auth files into the container. Prefer a handoff summary over raw host session import.
+        See `docs/CACHYOS-PODMAN.md` for rootless Podman troubleshooting and the host/container/Codex flow table.
         {game_note}
         """
     )
@@ -712,10 +1151,11 @@ def autonomous_prompt(config: ProjectConfig) -> str:
         Work rules:
 
         - Do not ask for Codex `danger-full-access`, host full-access, privileged containers, or Podman socket mounts to make Podman work.
-        - Host-side sandbox preflight should be run before Codex launch through `agent-starter sandbox preflight .`, which writes `.agent-starter/sandbox/preflight.json` after success.
-        - If `.agent-starter/sandbox/preflight.json` exists and reports `"status": "passed"`, do not rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside this Codex session.
+        - Host-side sandbox preflight should be run before Codex launch through `scripts/sandbox/preflight`, which uses `agent-starter` from `PATH` or adjacent `../agent-starter` when available and writes `.agent-starter/sandbox/preflight.json` after success.
+        - Use `scripts/sandbox/status` to check whether preflight is valid/current, stale, missing, or failed when `agent-starter status .` is unavailable.
+        - If preflight is valid/current, do not rerun `scripts/sandbox/doctor` or `scripts/sandbox/build` from inside this Codex session.
         - Use `scripts/sandbox/check` only when the current Codex sandbox/approval policy permits rootless Podman access.
-        - If host-side sandbox verification is required but unavailable from this Codex session, stop with `BLOCKED_ENVIRONMENT` and tell the human to run `agent-starter sandbox preflight .` or `scripts/sandbox/check` from a normal host terminal, or launch Codex inside the container.
+        - If host-side sandbox verification is required but unavailable from this Codex session, stop with `BLOCKED_ENVIRONMENT` and tell the human to run `scripts/sandbox/preflight` or `scripts/sandbox/check` from a normal host terminal, or launch Codex inside the container.
         - If this Codex session is already inside the container, run `./scripts/check.sh` and focused project commands directly; do not run host-side `scripts/sandbox/*` launchers from inside the container.
         - Do not silently fall back to host build/test commands if `scripts/sandbox/doctor`, `scripts/sandbox/build`, or `scripts/sandbox/check` fails.
         - If the sandbox is unavailable, record the exact failure and stop with `BLOCKED_ENVIRONMENT` unless the human explicitly approves a host-only fallback.
@@ -767,8 +1207,11 @@ def file_map(config: ProjectConfig) -> dict[str, str]:
         ".agent-starter/sandbox/Containerfile": containerfile(config),
         ".agent-starter/sandbox/sandbox.json": sandbox_json(config),
         ".agent-starter/sandbox/README.md": sandbox_readme(config),
+        "docs/CACHYOS-PODMAN.md": cachyos_podman_doc(config),
         "docs/12-SANDBOX.md": sandbox_doc(config),
         "scripts/sandbox/doctor": doctor_script(config),
+        "scripts/sandbox/preflight": preflight_script(config),
+        "scripts/sandbox/status": status_script(config),
         "scripts/sandbox/build": build_script(config),
         "scripts/sandbox/shell": shell_script(config),
         "scripts/sandbox/exec": exec_script(config),

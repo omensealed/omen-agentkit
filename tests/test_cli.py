@@ -9,7 +9,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from agent_starter.cli import build_parser, load_answers, main
+from agent_starter.cli import (
+    _write_sandbox_preflight_stamp,
+    build_parser,
+    load_answers,
+    main,
+    sandbox_fingerprint,
+    sandbox_preflight_state,
+)
 from agent_starter.generator import generate_project
 from agent_starter.models import ProjectConfig
 
@@ -140,10 +147,15 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(root_arg, root.resolve())
                 calls.append(command[0].name)
                 self.assertIn("label", kwargs)
+                self.assertIn("log_path", kwargs)
                 return 0
 
             output = io.StringIO()
-            with mock.patch("agent_starter.cli._run_project_command", side_effect=fake_run), contextlib.redirect_stdout(output):
+            with (
+                mock.patch("agent_starter.cli._run_project_command_logged", side_effect=fake_run),
+                mock.patch("agent_starter.cli._podman_image_id", return_value="sha256:test"),
+                contextlib.redirect_stdout(output),
+            ):
                 code = main(["sandbox", "preflight", str(root)])
             self.assertEqual(code, 0)
             self.assertEqual(calls, ["doctor", "build", "check"])
@@ -151,8 +163,78 @@ class CliTests(unittest.TestCase):
             stamp = json.loads((root / ".agent-starter/sandbox/preflight.json").read_text(encoding="utf-8"))
             self.assertEqual(stamp["status"], "passed")
             self.assertEqual(stamp["mode"], "toolchain")
+            self.assertEqual(stamp["image_id"], "sha256:test")
+            self.assertIn("sandbox_fingerprint", stamp)
+            self.assertIn("inputs", stamp)
+            self.assertIn("scripts/sandbox/preflight", stamp["inputs"])
             self.assertEqual(stamp["steps"], ["sandbox doctor", "sandbox build", "sandbox check"])
             self.assertIn("contains no credentials", stamp["note"])
+
+    def test_sandbox_preflight_state_detects_missing_valid_stale_and_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="State Check", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+
+            state, reason, _ = sandbox_preflight_state(root)
+            self.assertEqual(state, "missing")
+            self.assertIn("missing", reason)
+
+            with mock.patch("agent_starter.cli._podman_image_id", return_value="sha256:test"):
+                _write_sandbox_preflight_stamp(
+                    root,
+                    config,
+                    status="passed",
+                    run_check=True,
+                    steps=["sandbox doctor", "sandbox build", "sandbox check"],
+                )
+            state, reason, _ = sandbox_preflight_state(root)
+            self.assertEqual(state, "valid")
+            self.assertIn("current", reason)
+
+            check = root / "scripts/sandbox/check"
+            check.write_text(check.read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8")
+            state, reason, _ = sandbox_preflight_state(root)
+            self.assertEqual(state, "stale")
+            self.assertIn("scripts/sandbox/check", reason)
+
+            _write_sandbox_preflight_stamp(
+                root,
+                config,
+                status="failed",
+                run_check=True,
+                steps=["sandbox doctor", "sandbox build", "sandbox check"],
+                failed_step="sandbox build",
+            )
+            state, reason, _ = sandbox_preflight_state(root)
+            self.assertEqual(state, "failed")
+            self.assertIn("sandbox build", reason)
+
+    def test_sandbox_fingerprint_matches_generated_shell_algorithm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Fingerprint Match", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+            fingerprint, inputs = sandbox_fingerprint(root)
+
+            import hashlib
+
+            expected = hashlib.sha256()
+            for relative in (
+                ".agent-starter/project.json",
+                ".agent-starter/sandbox/Containerfile",
+                ".agent-starter/sandbox/sandbox.json",
+                "scripts/sandbox/doctor",
+                "scripts/sandbox/preflight",
+                "scripts/sandbox/build",
+                "scripts/sandbox/check",
+            ):
+                expected.update(f"{inputs[relative]}  {relative}\n".encode("utf-8"))
+            self.assertEqual(fingerprint, expected.hexdigest())
 
     def test_sandbox_clean_delegates_to_generated_script(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -390,8 +472,37 @@ class CliTests(unittest.TestCase):
             self.assertIn("[ok] Metadata: Status Project", text)
             self.assertIn("[ok] Generated files:", text)
             self.assertIn("[ok] Codex: codex 1.2.3; authorized account reported", text)
-            self.assertIn("AI-local prompt/session/proposal artifacts are ignored", text)
+            self.assertIn("AI-local notes, prompts, sessions, skill metadata, and proposals are ignored", text)
             self.assertIn("Next action:", text)
+
+    def test_status_command_reports_sandbox_health(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Sandbox Status", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+
+            adapter = mock.Mock()
+            adapter.display_name = "OpenAI Codex CLI"
+            adapter.exists.return_value = False
+
+            output = io.StringIO()
+            with (
+                mock.patch("agent_starter.cli.get_adapter", return_value=adapter),
+                mock.patch("agent_starter.cli.shutil.which", return_value=None),
+                contextlib.redirect_stdout(output),
+            ):
+                code = main(["status", str(root)])
+            text = output.getvalue()
+            self.assertEqual(code, 0)
+            self.assertIn("Sandbox mode: toolchain", text)
+            self.assertIn("Sandbox engine: podman", text)
+            self.assertIn("Sandbox preflight: missing", text)
+            self.assertIn("Sandbox preflight reason: preflight stamp is missing", text)
+            self.assertIn("Sandbox image:", text)
+            self.assertIn("Rootless Podman: podman missing", text)
+            self.assertIn("agent-starter sandbox preflight .", text)
 
     def test_status_command_reports_missing_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

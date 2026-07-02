@@ -39,7 +39,7 @@ The wizard asks whether this is a new project or an existing codebase, then coll
 - network, account, personal-data, payment, and security constraints;
 - test layers, browser testing, local Git, and optional later GitHub Actions/repository setup;
 - whether to generate optional rootless Podman sandbox files for containerized project checks;
-- initial license choice, including MIT, Apache-2.0, BSD-3-Clause, GPL-3.0-or-later, AGPL-3.0-or-later, MPL-2.0, or undecided; the wizard shows a short permissive/copyleft guide before this choice;
+- initial license choice, defaulting to AGPL-3.0-or-later and also offering MIT, Apache-2.0, BSD-3-Clause, GPL-3.0-or-later, MPL-2.0, or undecided; the wizard shows a short permissive/copyleft guide before this choice;
 - extra trusted CachyOS packages and unresolved questions.
 
 Never enter a database password, OAuth token, API key, cookie, private key, or production secret. The kit does not need them.
@@ -66,7 +66,7 @@ Only use `--force` after reviewing the result. Forced replacement stores origina
 
 Read `AGENTS.md`, `FIRST_PROMPT.md`, `docs/00-PROJECT-BRIEF.md`, `docs/08-IMPLEMENTATION-PLAN.md`, and `docs/11-IMPLEMENTATION-NOTES.md` before the first Codex session.
 
-Generated projects keep local AI/runtime artifacts out of GitHub by default. Codex logs, session JSONL files, saved prompt drafts, local-model handoff drafts, starter runtime state, proposals, and backups are ignored by `.gitignore`; durable project docs, scripts, and source files remain trackable.
+Generated projects keep local AI/runtime artifacts out of GitHub by default. `AGENTS.md`, `FIRST_PROMPT.md`, implementation notes, progress/handoff notes, Codex skill metadata, saved prompt drafts, Codex logs, session JSONL files, local-model handoff drafts, starter runtime state, proposals, and backups are ignored by `.gitignore`; end-user docs, scripts, and source files remain trackable.
 
 The wizard recommends a local-first path. Local Git can be initialized immediately, but GitHub Actions default to off so you can run `./scripts/check.sh`, complete Phase 0, and decide later whether a remote repository or CI workflow is worth adding.
 
@@ -101,18 +101,33 @@ If you enabled the rootless Podman sandbox, inspect it before relying on it:
 # Normal host terminal, from the host project root:
 agent-starter sandbox doctor .
 agent-starter sandbox preflight .
+scripts/sandbox/preflight
 scripts/sandbox/doctor
 scripts/sandbox/build
 scripts/sandbox/check
 ```
 
-`agent-starter sandbox preflight .` runs the generated `doctor`, `build`, and `check` wrappers before Codex
-starts and writes `.agent-starter/sandbox/preflight.json` after success. `agent-starter launch .` and generated
-`START_AGENT.sh` run this preflight automatically for active sandbox modes. If Codex is already open and the
-preflight stamp reports `"status": "passed"`, do not make Codex rerun `scripts/sandbox/doctor` or
-`scripts/sandbox/build` from inside its constrained sandbox. Do not widen Codex to host full-access just to make
-these rootless Podman wrappers work. If Codex cannot access `/run/user/<uid>/libpod` or another rootless Podman
-runtime path, run verification from a normal host terminal or launch Codex inside the built container.
+`scripts/sandbox/preflight` uses `agent-starter` from `PATH` or an adjacent `../agent-starter` launcher when
+available, then runs the generated `doctor`, `build`, and `check` wrappers before Codex starts. It writes
+`.agent-starter/sandbox/preflight.json` after success. `agent-starter launch .` and generated `START_AGENT.sh`
+run this preflight automatically for active sandbox modes. The stamp includes a fingerprint of generated sandbox
+inputs; trust it only while `agent-starter status .` or generated `scripts/sandbox/status` reports it as
+valid/current. If Codex is already open and preflight is valid/current, do not make Codex rerun
+`scripts/sandbox/doctor` or `scripts/sandbox/build` from
+inside its constrained sandbox. If the stamp is missing, stale, or failed, run preflight from a normal host
+terminal. Do not widen Codex to host full-access just to make these rootless Podman wrappers work. If Codex cannot
+access `/run/user/<uid>/libpod` or another rootless Podman runtime path, run verification from a normal host
+terminal or launch Codex inside the built container.
+
+Toolchain `check`, `exec`, and `shell` default to no network:
+
+```bash
+scripts/sandbox/check
+AGENTKIT_SANDBOX_NETWORK=default scripts/sandbox/check   # explicit reviewed opt-in
+```
+
+Preflight logs are under `.agent-starter/logs/`. Generated projects also include `docs/CACHYOS-PODMAN.md` for
+CachyOS/rootless Podman diagnostics.
 
 Inside the generated container, run project commands directly instead of host-side sandbox launchers:
 
@@ -134,7 +149,7 @@ scripts/sandbox/resume
 
 `codex-login` is an explicit user action and stores Codex state in a project-specific container home volume. The generated sandbox does not mount host `~/.codex`, `~/.ssh`, browser profiles, production configs, or the host home directory by default. Prefer `docs/agent-prompts/create-container-handoff.md` to create a no-secrets handoff summary instead of copying raw session transcripts.
 
-For Godot or interactive game projects, containerized headless checks are the default. Interactive rendering, audio, and controller testing should use `scripts/playtest-host` unless you explicitly enable `sandbox.gui_passthrough`. That advanced option generates `scripts/sandbox/playtest-gui` and intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container.
+For Godot or interactive game projects, containerized headless checks are the default. Godot projects get `docs/GODOT-SANDBOX.md` and a `scripts/sandbox/headless-test` helper that can call a future project-owned `scripts/godot-headless-test.sh` hook for scene/export/screenshot artifacts. Interactive rendering, audio, and controller testing should use `scripts/playtest-host` unless you explicitly enable `sandbox.gui_passthrough`. That advanced option generates `scripts/sandbox/playtest-gui` and intentionally exposes selected host Wayland, GPU, PipeWire audio, and input/controller interfaces to the project container.
 
 Rootless Podman reduces host filesystem risk, but container commands can still change mounted project files and can misuse network access when networking is available. Do not use host full-access as the default answer to permission friction, and do not deploy, push, rsync production targets, or mount real secrets without explicit approval.
 
@@ -192,13 +207,13 @@ The initial prompt tells Codex to inspect the existing repository, verify the pr
 
 At every meaningful phase:
 
-1. Read `AGENTS.md`, current progress, recent implementation notes, decisions, and handoff.
+1. Read local AI working docs such as `AGENTS.md`, current progress, recent implementation notes, decisions, and handoff.
 2. Update the plan before making broad changes.
 3. Keep changes phase-sized and avoid unrelated rewrites.
 4. Run the closest tests during work and `./scripts/check.sh` before ending the phase.
 5. Update requirements, architecture, security, and operations docs when behavior changes.
-6. Append a complete entry to `docs/11-IMPLEMENTATION-NOTES.md`.
-7. Refresh `docs/09-PROGRESS.md` and `docs/14-AGENT-HANDOFF.md` with the exact next step.
+6. Append a complete local entry to `docs/11-IMPLEMENTATION-NOTES.md`.
+7. Refresh local `docs/09-PROGRESS.md` and `docs/14-AGENT-HANDOFF.md` with the exact next step.
 
 A note skeleton can be appended with:
 
