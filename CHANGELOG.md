@@ -1,7 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.4.8 — 2026-07-02
 
+- Added an optional `pywebview` desktop wizard (`agent-starter gui` / `agent-starter-gui`) that uses local HTML/CSS/JS and the existing core generator/validation/Codex boundaries.
+- Fixed regeneration idempotency for fresh configs by reusing existing generated metadata timestamps, preventing timestamp-only conflicts in manifest, project metadata, docs memory, and Agent Kit skill sidecar files.
+- Improved optional GUI behavior so preview panes wrap long output and the launch-Codex action closes the wizard before handing off.
+- Added `agent-starter sandbox clean` and strengthened generated `scripts/sandbox/clean`; generated sandbox images are now reused by default and rebuilt only with `scripts/sandbox/build --rebuild`.
+- Added explicit game/Godot `sandbox.gui_passthrough` opt-in for generating an advanced `scripts/sandbox/playtest-gui` helper with host GPU/audio/controller passthrough warnings.
+- Hardened generated rootless Podman wrappers to use `--userns=keep-id` with the current `id -u` / `id -g` instead of a fixed UID/GID, keeping `/workspace` files host-owned on CachyOS/Arch-style systems.
 - Hardened generated rootless Podman sandbox preflight with fingerprinted freshness checks, generated `scripts/sandbox/preflight`, status reporting for missing/stale/failed/valid stamps, and logs under `.agent-starter/logs/`.
 - Added generated `scripts/sandbox/status` so Codex can check preflight validity even when `agent-starter` is not on the session `PATH`.
 - Updated generated sandbox wrappers to use project-local container home/cache directories, no-network toolchain execution by default, explicit `AGENTKIT_SANDBOX_NETWORK=default` opt-in, basic hardening flags, and consistent generated-resource labels.
@@ -11,15 +17,6 @@
 - Expanded generated Git/GitHub ignore policy so AI-facing notes, prompts, skill metadata, and starter runtime files stay local while end-user documentation remains trackable.
 - Fixed Python 3.11 CI compatibility by removing f-string expressions with embedded backslashes and adding a 3.11 grammar parse regression test.
 - Improved generated Godot sandbox guidance with `docs/GODOT-SANDBOX.md`, `artifacts/headless/`, and a project-owned `scripts/godot-headless-test.sh` hook for future scene/export/screenshot checks without enabling GUI passthrough by default.
-
-## 0.4.8 — 2026-06-28
-
-- Added an optional `pywebview` desktop wizard (`agent-starter gui` / `agent-starter-gui`) that uses local HTML/CSS/JS and the existing core generator/validation/Codex boundaries.
-- Fixed regeneration idempotency for fresh configs by reusing existing generated metadata timestamps, preventing timestamp-only conflicts in manifest, project metadata, docs memory, and Agent Kit skill sidecar files.
-- Improved optional GUI behavior so preview panes wrap long output and the launch-Codex action closes the wizard before handing off.
-- Added `agent-starter sandbox clean` and strengthened generated `scripts/sandbox/clean`; generated sandbox images are now reused by default and rebuilt only with `scripts/sandbox/build --rebuild`.
-- Added explicit game/Godot `sandbox.gui_passthrough` opt-in for generating an advanced `scripts/sandbox/playtest-gui` helper with host GPU/audio/controller passthrough warnings.
-- Hardened generated rootless Podman wrappers to use `--userns=keep-id` with the current `id -u` / `id -g` instead of a fixed UID/GID, keeping `/workspace` files host-owned on CachyOS/Arch-style systems.
 
 ## 0.4.7 — 2026-06-28
 
