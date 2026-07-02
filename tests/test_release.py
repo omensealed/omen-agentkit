@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 import unittest
 from pathlib import Path
@@ -18,6 +19,12 @@ class ReleaseConsistencyTests(unittest.TestCase):
         self.assertEqual(version_file, __version__)
         self.assertEqual(version_file, match.group(1))
         self.assertEqual(version_file, ProjectConfig().kit_version)
+
+    def test_source_parses_with_python_311_grammar(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for path in sorted((root / "agent_starter").rglob("*.py")) + [root / "starter.py"]:
+            with self.subTest(path=path.relative_to(root)):
+                ast.parse(path.read_text(encoding="utf-8"), filename=str(path), feature_version=(3, 11))
 
 
 if __name__ == "__main__":

@@ -591,6 +591,10 @@ def docs_index(config: ProjectConfig) -> str:
 
 
 def project_brief(config: ProjectConfig) -> str:
+    default_goals = (
+        "- Deliver a small, usable vertical slice with repeatable setup and tests.\n"
+        "- Refine additional goals with the user during Phase 0."
+    )
     return clean(
         f"""
         # Project brief
@@ -610,7 +614,7 @@ def project_brief(config: ProjectConfig) -> str:
 
         ## Goals
 
-        {md_list(config.goals, empty="- Deliver a small, usable vertical slice with repeatable setup and tests.\n- Refine additional goals with the user during Phase 0.")}
+        {md_list(config.goals, empty=default_goals)}
 
         ## Non-goals
 
@@ -1574,6 +1578,7 @@ def doctor_script(config: ProjectConfig) -> str:
     optional = [item for item in unique(optional) if item not in required]
     required_checks = "\n".join(f"check_required {shlex.quote(command)}" for command in required)
     optional_checks = "\n".join(f"check_optional {shlex.quote(command)}" for command in optional)
+    optional_checks_block = optional_checks or "printf '%s\\n' 'None.'"
     return clean(
         fr"""
         #!/usr/bin/env bash
@@ -1613,7 +1618,7 @@ def doctor_script(config: ProjectConfig) -> str:
         printf '\nRequired toolchain:\n'
         {required_checks}
         printf '\nOptional integrations:\n'
-        {optional_checks or "printf '%s\n' 'None.'"}
+        {optional_checks_block}
 
         printf '\nRepository:\n'
         if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

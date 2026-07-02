@@ -9,6 +9,7 @@
 - Fixed generated `.gitignore` and rsync exclude handling so `.env.sandbox.example` and other example env files remain trackable.
 - Changed the source project and generated-project default license to `AGPL-3.0-or-later`.
 - Expanded generated Git/GitHub ignore policy so AI-facing notes, prompts, skill metadata, and starter runtime files stay local while end-user documentation remains trackable.
+- Fixed Python 3.11 CI compatibility by removing f-string expressions with embedded backslashes and adding a 3.11 grammar parse regression test.
 - Improved generated Godot sandbox guidance with `docs/GODOT-SANDBOX.md`, `artifacts/headless/`, and a project-owned `scripts/godot-headless-test.sh` hook for future scene/export/screenshot checks without enabling GUI passthrough by default.
 
 ## 0.4.8 — 2026-06-28
