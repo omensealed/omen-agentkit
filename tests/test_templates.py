@@ -485,14 +485,14 @@ class TemplateTests(unittest.TestCase):
                 (
                     "3ec3739d29ce8b999c991a3bf13a721655c13b041ee76546d220529ad466bf11",
                     "0362bde4cb62768a5c725ab5d0408ec35d5f395c8974d737708aeeafde91d6ce",
-                    "8687404f5404fcb7323a1ad65d930b0b6f95fb2f4dbc708dbf207ae208c64a49",
+                    "6e0576e3db0e38c41b91006242fbd14b5846017a7630ec58c0f14e76836b27ff",
                     "4c456a311ad808784f0c4402c5485a365b0bef189c3c632672b995257284b0c4",
                     "281492a8a16f2d8ef26c860ed8127bbf29532247323de7b4acb212f7e2910101",
                 ),
                 (
                     "bc9fb09a9c162068d06ad965e9c7c884b2b533ae91e199f2c21b5e66948004da",
                     "7a439a4994d2dacd2ec3ee5e58b5325a9a0e4dc32ef1875dcbf511af422e308a",
-                    "4081293a238383e5f8e925ea1a87071d2c447373670c82d28a9138eafb1003b2",
+                    "ea7817ffddc81102a3b9f54fb757837f5864ca2b3d33a7995a9c6f1969ea533e",
                     "4c813a9af617f0cdac79e19b7f15aacf8f51d8c57a1a0f61749b23d7b248d840",
                     "088b7a49b6d54c37e9cc7cbe22072df31e13ae5fa4d35f70b32ba8f3df7fb5f3",
                 ),
@@ -550,11 +550,11 @@ class TemplateTests(unittest.TestCase):
             (
                 (
                     "20b28323cb8043cea708edddf8b0826c451dc703521ed85c283b61aa87eda6af",
-                    "5ab3f607d58ef96535fcc7ed2f55e676760529dd2f5f300eda85ab4376c8cde5",
+                    "b45f43c024ff312d1e2ca097736453bdccaf42c35f103b9822ec4131372ca9b1",
                 ),
                 (
                     "c6ccd228bb2ded03ebf9e844910571df6c879f3a509b474acc232ccc5714b95f",
-                    "5df3f1f2ea0e0571a65113b646f546bc15427a520cf1e92d4a93ea6e8448fc46",
+                    "f9a7537069f2c0d7bb42ffe604d2c90911c4ed6e7c5610d9f0a8f97122342d9c",
                 ),
             ),
         )

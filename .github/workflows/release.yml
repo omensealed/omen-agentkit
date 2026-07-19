@@ -94,8 +94,9 @@ jobs:
             "$RUNNER_TEMP/release/"*.tar.gz \
             "$RUNNER_TEMP/release/SHA256SUMS" \
             "$RUNNER_TEMP/release/release.spdx.json" \
+            --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$RELEASE_TAG" \
             --notes-from-tag \
             --draft
-          gh release edit "$RELEASE_TAG" --draft=false
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

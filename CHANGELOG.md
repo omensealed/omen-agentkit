@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.3 — 2026-07-19
+
+- Bind checkout-free GitHub release creation and publication commands to the explicit repository identifier instead of
+  relying on local `.git` discovery.
+- Preserve the prior failed verification/publication tags and retry only through a new immutable patch version.
+
 ## 0.5.2 — 2026-07-19
 
 - Build release artifacts through the declared setuptools PEP 517 backend without installing an undeclared `build`

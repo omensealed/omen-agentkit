@@ -99,8 +99,9 @@ class ReleaseSafetyTests(unittest.TestCase):
         self.assertIn("sha256sum --check SHA256SUMS", publish)
         self.assertIn('commits/$RELEASE_TAG" --jq .sha', publish)
         self.assertIn("gh release create", publish)
+        self.assertIn('--repo "$GITHUB_REPOSITORY"', publish)
         self.assertIn("--draft", publish)
-        self.assertIn('gh release edit "$RELEASE_TAG" --draft=false', publish)
+        self.assertIn('gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false', publish)
         self.assertNotIn("deploy", workflow.lower())
         self.assertNotIn("secrets.", workflow)
 

@@ -8,7 +8,7 @@ from agent_starter.release_safety import verify_release_safety
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANDIDATE_VERSION = "0.5.2"
+CANDIDATE_VERSION = "0.5.3"
 
 
 class ReleaseCandidateTests(unittest.TestCase):
@@ -28,8 +28,8 @@ class ReleaseCandidateTests(unittest.TestCase):
     def test_local_candidate_evidence_is_specific_and_non_publishing(self) -> None:
         body = (ROOT / "docs" / f"RELEASE-CANDIDATE-{CANDIDATE_VERSION}.md").read_text(encoding="utf-8")
         self.assertIn("local unpublished corrective candidate", body)
-        self.assertIn("failed closed", body)
-        self.assertIn("no GitHub release was created", body)
+        self.assertRegex(body, r"fail(?:ed)?[- ]closed")
+        self.assertRegex(body, r"no (?:GitHub )?release(?: or draft)? was created")
         self.assertNotIn("PLACEHOLDER", body)
         self.assertIn(f"cli_ai_agent_starter_kit-{CANDIDATE_VERSION}-py3-none-any.whl", body)
         self.assertIn(f"cli_ai_agent_starter_kit-{CANDIDATE_VERSION}.tar.gz", body)
