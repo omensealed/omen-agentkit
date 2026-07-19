@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.1 — 2026-07-19
+
+- Remove public links and package-manifest claims for intentionally private maintainer ledgers so clean source checkouts
+  and release verification do not depend on files that are correctly excluded from Git.
+- Preserve the failed, unpublished `v0.5.0` verification tag and use a new immutable corrective release version rather
+  than moving or overwriting a remote tag.
+
 ## 0.5.0 — 2026-07-19
 
 - Prepare a local unpublished 0.5.0 candidate with aligned version/changelog metadata, exact checksum/SPDX artifact

@@ -19,13 +19,12 @@ include docs/GITHUB-ACTIONS-UPDATE-POLICY.md
 include docs/GPT-5.6-SOL-MIGRATION-REPORT.md
 include docs/GPT-5.6-SOL-MIGRATION-STATUS.md
 include docs/HUMAN-START.md
-include docs/IMPLEMENTATION-NOTES.md
 include docs/MAINTAINER-GUIDE.md
 include docs/OMEN_AGENTKIT_GPT_5_6_SOL_REVIEW_AND_PHASE_PLAN.txt
 include docs/OPERATIONS-GUIDE.md
 include docs/PERFORMANCE-RESOURCE-CHECKS.md
-include docs/PROGRESS.md
 include docs/RELEASE-CANDIDATE-0.5.0.md
+include docs/RELEASE-CANDIDATE-0.5.1.md
 include docs/RELEASE-SAFETY.md
 include docs/SECURITY-MODEL.md
 include docs/SECURITY-REGRESSION-SUITE.md

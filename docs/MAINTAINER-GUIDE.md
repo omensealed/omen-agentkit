@@ -30,12 +30,12 @@ The normal source gate is:
 ./scripts/check.sh
 ```
 
-Focused commands and test strategy are in [development](DEVELOPMENT.md). Append each meaningful phase and its exact results to [implementation notes](IMPLEMENTATION-NOTES.md), and keep [progress](PROGRESS.md) current. Do not install optional tooling merely to make a gate available.
+Focused commands and test strategy are in [development](DEVELOPMENT.md). In a maintainer workspace, append each meaningful phase and its exact results to the private local `docs/IMPLEMENTATION-NOTES.md` ledger and keep local `docs/PROGRESS.md` current when those files are present. They are intentionally ignored and are not public source-checkout dependencies. Do not install optional tooling merely to make a gate available.
 
 ## Release
 
 Read [release safety](RELEASE-SAFETY.md), [supply-chain policy](SUPPLY-CHAIN-POLICY.md), and the [GitHub Actions update policy](GITHUB-ACTIONS-UPDATE-POLICY.md). Ordinary CI cannot publish. Release dispatch is manual, exact-tag-bound, clean-tree-gated, and separates verification from final protected publication authority.
 
-The current local candidate evidence is in [0.5.0 release candidate](RELEASE-CANDIDATE-0.5.0.md). Accept burn-in only through the opt-in [user-submitted reporting guide](BURN-IN.md); add no telemetry or background reporting.
+The current corrective candidate evidence is in [0.5.1 release candidate](RELEASE-CANDIDATE-0.5.1.md). Accept burn-in only through the opt-in [user-submitted reporting guide](BURN-IN.md); add no telemetry or background reporting.
 
 Never tag, publish, push, install, deploy, or contact production as an implied maintenance step.

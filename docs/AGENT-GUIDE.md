@@ -7,7 +7,7 @@ This is the concise source-repository routing index for Codex. The root `AGENTS.
 - Preserve user changes, public commands/imports, standard-library runtime, strict schema behavior, and conflict/proposal/backup safety.
 - Never inspect credentials or weaken approval, workspace-write, command-network, sandbox, path, symlink, or atomic-write controls.
 - Add or adjust regression coverage with the smallest cohesive implementation change. Run focused tests, then `./scripts/check.sh` before completion.
-- Update [implementation notes](IMPLEMENTATION-NOTES.md), [progress](PROGRESS.md), and the active phase ledger when behavior or contracts change.
+- In a maintainer workspace, update the private local `docs/IMPLEMENTATION-NOTES.md` and `docs/PROGRESS.md` ledgers when present, plus the tracked active phase ledger when behavior or contracts change. The private ledgers are intentionally not required in a public source checkout.
 - Planning, local checking, and deterministic local artifact building do not authorize remote apply, push, publication, database migration, or secret access.
 
 ## Read only what the task needs
