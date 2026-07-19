@@ -55,6 +55,7 @@
     "enabled": false,
     "engine": "podman",
     "mode": "none",
+    "image_profile": "arch-toolchain",
     "codex_inside_container": false,
     "rootless_required": true,
     "install_agentkit_skill": true,

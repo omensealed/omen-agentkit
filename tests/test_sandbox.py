@@ -65,6 +65,7 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertEqual(sandbox["engine"], "podman")
             self.assertEqual(sandbox["workspace_mount"], "/workspace")
             self.assertEqual(sandbox["mode"], "toolchain")
+            self.assertEqual(sandbox["image_profile"], "arch-toolchain")
             self.assertEqual(sandbox["user_namespace"], "keep-id")
             self.assertIn("id -u/id -g", sandbox["runtime_user"])
             self.assertIn("none", sandbox["network_default"])
@@ -87,6 +88,7 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertNotIn("/run/podman/podman.sock", combined)
             self.assertNotIn("--privileged", combined)
             self.assertNotIn("useradd -m -u 1000", (root / ".agent-starter/sandbox/Containerfile").read_text(encoding="utf-8"))
+            self.assertNotIn("chmod 0777 /home/codex", (root / ".agent-starter/sandbox/Containerfile").read_text(encoding="utf-8"))
             for relative in ("scripts/sandbox/check", "scripts/sandbox/exec", "scripts/sandbox/shell"):
                 text = (root / relative).read_text(encoding="utf-8")
                 self.assertIn("HOST_UID=$(id -u)", text, relative)
@@ -129,9 +131,35 @@ class SandboxGenerationTests(unittest.TestCase):
             self.assertIn("should not rerun", docs)
             self.assertIn("do not silently fall back to host build/test commands", normalized_docs.lower())
             self.assertIn("Codex still edits this project directory from the host", docs)
+            self.assertIn("Image profile: `arch-toolchain`", docs)
+            self.assertIn("independent of the host distribution", docs)
             self.assertIn("Do not mount host secrets", docs)
             self.assertNotIn("codex --sandbox danger-full-access", docs)
             self.assertNotIn("do not let sandbox setup block", docs.lower())
+
+    def test_explicit_sandbox_image_profiles_are_independent_from_host_target(self) -> None:
+        cases = (
+            ("debian-toolchain", ["cachyos-linux"], "debian:stable-slim", "apt-get install", "python3-venv", "pacman -Syu"),
+            ("arch-toolchain", ["linux"], "archlinux:base-devel", "pacman -Syu", "python", "apt-get install"),
+        )
+        for profile, target_platforms, base_image, installer, package, absent in cases:
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp) / "project"
+                config = self.make_config(
+                    root,
+                    target_platforms=target_platforms,
+                    sandbox=SandboxConfig(enabled=True, mode="toolchain", image_profile=profile),
+                )
+                report = generate_project(config)
+                self.assertTrue(report.ok, report.validation_errors)
+                text = (root / ".agent-starter/sandbox/Containerfile").read_text(encoding="utf-8")
+                sandbox = json.loads((root / ".agent-starter/sandbox/sandbox.json").read_text(encoding="utf-8"))
+                self.assertIn(base_image, text)
+                self.assertIn(installer, text)
+                self.assertIn(package, text)
+                self.assertNotIn(absent, text)
+                self.assertEqual(sandbox["image_profile"], profile)
+                self.assertNotIn("chmod 0777", text)
 
     def test_project_container_scripts_set_inside_sandbox_marker(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

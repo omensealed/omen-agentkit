@@ -1,0 +1,1852 @@
+OMEN AGENTKIT — GPT-5.6-SOL MIGRATION, CODE REVIEW, AND PHASE PLAN
+=================================================================
+
+Repository: https://github.com/omensealed/omen-agentkit
+Reviewed public baseline: v0.4.8 / main as available on 2026-07-13
+Target Codex model: gpt-5.6-sol, medium reasoning by default
+Primary supported development hosts after this plan:
+  - CachyOS / Arch Linux
+  - Debian
+  - Ubuntu
+Document purpose: implementation plan for Codex, maintainers, and reviewers
+
+IMPORTANT WORKING RULE
+----------------------
+This is an incremental hardening and usability plan, not a rewrite mandate. Preserve the project's existing safety controls, standard-library runtime, generated-project compatibility, rootless Podman approach, and beginner-oriented purpose. Make changes in small, testable slices and maintain compatibility shims while modules are moved.
+
+
+1. EXECUTIVE SUMMARY
+====================
+
+Omen AgentKit already has a stronger safety baseline than many project generators. It constrains writes to the selected project root, rejects unsafe roots and symlinked parent paths, writes new files atomically, preserves conflicts as proposals, creates backups before forced replacement, does not push or deploy automatically, keeps credentials out of its data model, and requires an explicit flag before custom commands from an answers file can become executable project commands. The generated Codex configuration also uses `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, and cached web search.
+
+The migration should therefore strengthen—not replace—the present design.
+
+No obvious critical credential leak, arbitrary path escape, or silent remote-deployment path was found in the inspected core. This was a static review plus a local generation/validation smoke test, not a full penetration test. External Codex login, live Podman, GitHub, package installation, and production deployment paths were not executed during this review.
+
+The highest-value changes are:
+
+1. Replace the hard-coded GPT-5.5 reference with an explicit, versioned model policy whose quality-first default is `gpt-5.6-sol` with medium reasoning. Do not merely exchange one global string for another.
+2. Remove CachyOS/Arch assumptions from the core data model and build platform adapters for CachyOS/Arch, Debian, and Ubuntu.
+3. Make AI tool recommendations genuinely host-aware while ensuring AI output can never be executed directly. AI should recommend capabilities and package candidates; deterministic code must detect, verify, preview, and construct installation commands.
+4. Add strict configuration validation and schema migrations. Current raw JSON values can flow into dataclasses with insufficient type enforcement; values such as the string `"false"` can behave as truthy in Python.
+5. Gradually split the largest source modules and functions. `templates.py`, `cli.py`, and `sandbox.py` are already "god-file" risks, even though some size is caused by embedded document templates.
+6. Build a non-coder task composer that turns plain descriptions into bounded implementation, fix, review, or deployment-plan tasks with visible acceptance criteria and exclusions.
+7. Reduce generated prompt/document duplication through progressive disclosure and a compact agent context index, without deleting durable project memory.
+8. Add a structure auditor and generated modularity contract that discourages god files without forcing meaningless micro-files.
+9. Introduce secure deployment planning, artifact creation, preflight checks, rollback contracts, and explicit human-gated apply operations. Codex must not autonomously deploy.
+10. Harden CI and release supply-chain practices, including commit-SHA-pinned actions, cross-distribution provider tests, artifact provenance, and package discovery that does not silently omit new subpackages.
+
+Recommended delivery order:
+
+  Phase 0  Baseline, compatibility contract, and migration ledger
+  Phase 1  Model policy, validated schema, and source modularization seams
+  Phase 2  Platform detection and Arch/Debian/Ubuntu providers
+  Phase 3  Safe host-aware AI recommendations and install planning
+  Phase 4  Non-coder guided task UX and error recovery
+  Phase 5  Agent context efficiency and anti-god-file project structure
+  Phase 6  Secure deployment planning and gated execution
+  Phase 7  CI, supply chain, packaging, and release hardening
+  Phase 8  Compatibility burn-in, documentation, and release candidate
+
+Do not begin later phases until the prior phase's acceptance criteria pass. Phase 6 deployment apply functionality must remain disabled until its plan/check/build paths and rollback tests are proven.
+
+
+2. REVIEW SCOPE AND METHOD
+==========================
+
+Reviewed areas:
+
+  - Public repository layout, README, release state, and CI workflow
+  - Core Python modules under `agent_starter/`
+  - Optional GUI bridge and local UI boundary
+  - Project configuration serialization
+  - Codex adapter and advisor boundary
+  - Generated templates, prompt construction, bootstrap scripts, and Codex config
+  - Rootless Podman generation and host assumptions
+  - Existing-project write/conflict behavior
+  - Packaging metadata
+  - Current official Codex model, configuration, sandbox, and approval guidance
+  - Current GitHub Actions hardening guidance
+  - Debian/Ubuntu APT and Podman rootless guidance
+
+Local static measurements from the reviewed source snapshot:
+
+  - `agent_starter/templates.py`: 2,122 lines
+  - `agent_starter/cli.py`:       1,809 lines
+  - `agent_starter/sandbox.py`:   1,340 lines
+  - `agent_starter/generator.py`:   604 lines
+  - `agent_starter/wizard.py`:      533 lines
+
+Largest functions measured by Python AST line span:
+
+  - `wizard.run_wizard`:                248 lines
+  - `cli.build_parser`:                 175 lines
+  - `templates.agents_md`:              139 lines
+  - `templates.next_steps`:             130 lines
+  - `sandbox.preflight_script`:         116 lines
+  - `sandbox.sandbox_doc`:              111 lines
+  - `generator.build_file_map`:         103 lines
+  - `generator.generate_project`:       102 lines
+  - `sandbox.doctor_lines`:             101 lines
+  - `generator.validate_project`:        94 lines
+  - `ui_schema.config_from_gui_payload`: 78 lines with substantial branching
+
+Local smoke-test result using the inspected modules:
+
+  - A representative project generated successfully.
+  - The generation report listed 62 created paths.
+  - The generated tree contained 80 files.
+  - `validate_project()` returned success with no errors or warnings.
+  - The generated `AGENTS.md`, `FIRST_PROMPT.md`, and `NEXT_STEPS.md` together contained more than 2,300 words.
+  - All generated text in that representative configuration exceeded 21,000 words.
+
+The latter is not automatically wrong: much of it is durable documentation. It does show a need for progressive disclosure and a concise agent index so beginners and agents do not need to repeatedly consume every document.
+
+Review limitations:
+
+  - The full repository test suite and `scripts/check.sh` were not executed in the review environment.
+  - Live Codex authentication and API/model availability were not exercised.
+  - Live package-manager changes, rootless Podman builds, GitHub writes, and deployment targets were deliberately not exercised.
+  - Line counts are maintainability indicators, not proof that every large file is poorly designed.
+  - Security conclusions are limited to the inspected public code and documented behavior.
+
+
+3. WHAT SHOULD BE PRESERVED
+===========================
+
+The following are sound choices and should remain first-class design requirements.
+
+3.1 Standard-library core
+-------------------------
+
+The package has no third-party runtime dependencies. Keep that property for the CLI/core. Optional GUI and development extras may use dependencies, but the basic generator, validator, platform detection, recommendation validation, and deployment-plan generation should remain runnable with Python 3.11+ and the standard library.
+
+3.2 Existing-project write safety
+---------------------------------
+
+Preserve and expand these controls:
+
+  - Reject `/`, the user's home directory itself, and other unsafe roots.
+  - Resolve and constrain generated paths to the selected root.
+  - Reject writes through symlinked parents.
+  - Use atomic writes for new and replaced generated files.
+  - Leave identical files unchanged.
+  - Put conflicting alternatives in `.agent-starter/proposals/`.
+  - Create timestamped backups before an approved forced replacement.
+  - Never create a commit, push, release, or deployment as an incidental side effect.
+  - Keep custom commands disabled unless explicitly approved.
+  - Continue scanning answers/configuration files for likely credentials.
+
+The same write engine should be reused for new platform, context-index, structure-audit, and deployment files. Do not create separate ad hoc writers.
+
+3.3 Conservative Codex defaults
+--------------------------------
+
+Keep project-scoped configuration, workspace-only writes, approvals, and network-off-by-default command execution. Current official Codex guidance continues to distinguish the technical sandbox from approval policy; both are needed. A user asking for fewer prompts must not cause the generator to silently select danger-full-access or unrestricted networking.
+
+3.4 Rootless project isolation
+------------------------------
+
+Keep rootless Podman as the primary local container path. Do not solve compatibility problems by requiring rootful Podman, Docker daemon access, host-home mounts, or broad Codex permissions. Preserve the explicit host-mount exclusions for SSH keys, browser profiles, Git credentials, and the host Codex home.
+
+3.5 Durable implementation memory
+----------------------------------
+
+Keep implementation notes, progress, decisions, handoff, and open-question records. The improvement is to index and deduplicate them, not delete them.
+
+3.6 Human approval for consequential changes
+--------------------------------------------
+
+Package installation, dependency additions, repository creation, push, release, secrets access, production migrations, and deployment must remain human decisions. "Beginner friendly" must mean clearer choices and safer defaults—not hidden side effects.
+
+
+4. FINDINGS AND REQUIRED REMEDIATIONS
+====================================
+
+Severity meanings:
+
+  HIGH   Blocks the requested migration, creates material reliability/safety risk,
+         or substantially limits supported users.
+  MEDIUM Meaningful maintainability, UX, security-hardening, or data-loss concern.
+  LOW    Hygiene issue that should be corrected while touching the surrounding code.
+
+No CRITICAL finding was confirmed in the inspected core.
+
+
+F-001 — Hard-coded GPT-5.5 reference baseline
+Severity: HIGH
+Evidence:
+  - `agent_starter/cli.py` defines `CODEX_REFERENCE_MODEL = "gpt-5.5"`.
+  - The value is emitted into status and handoff text as the recommended complex-coding model.
+Impact:
+  - The generated guidance contradicts the intended GPT-5.6-SOL migration.
+  - A future model change would again require searching source strings.
+  - There is no central policy for model, reasoning effort, availability, fallback, or user override.
+Required remediation:
+  - Introduce a `CodexModelPolicy` object or equivalent configuration module.
+  - Default to exact model ID `gpt-5.6-sol` and medium reasoning.
+  - Generate the model and reasoning setting in project `.codex/config.toml` only when the user selects an explicit policy; otherwise clearly explain inherited configuration.
+  - Permit reviewed CLI/config overrides.
+  - Never silently downgrade from Sol. If unavailable, report an actionable error and offer the user a conscious selection.
+  - Treat optional Terra/Luna task routing as a later, explicit efficiency feature—not the default for this migration.
+  - Add tests proving that authoritative generated content contains no stale GPT-5.5 recommendation.
+
+
+F-002 — CachyOS/Arch assumptions are embedded through the domain model
+Severity: HIGH
+Evidence:
+  - `ProjectConfig` contains `cachyos_packages` rather than platform-neutral package requests.
+  - Wizard/advisor prompts declare the host to be CachyOS/Arch.
+  - Toolchain mappings, generated environment documentation, bootstrap scripts, sandbox docs, doctor checks, help text, and target defaults use CachyOS, `pacman`, or an Arch base image.
+  - `doctor` parses `/etc/os-release`, but still checks `pacman` for every system and only prints that non-Arch systems are not the intended path.
+Impact:
+  - Debian and Ubuntu users receive incorrect commands and confusing diagnostics.
+  - Host detection exists but is not used as an abstraction boundary.
+  - Package names, commands, and container image selection are conflated.
+Required remediation:
+  - Replace platform-specific fields with logical capabilities and optional per-platform extras.
+  - Add a platform provider interface and separate Arch-family and Debian-family implementations.
+  - Treat Ubuntu as a Debian-family flavor with explicit tested overrides only where needed; do not duplicate the entire provider.
+  - Detect the host through `/etc/os-release` `ID` and `ID_LIKE`, architecture, package-manager executables, and relevant capabilities.
+  - Produce accurate `pacman` or `apt-get` plans without executing either by default.
+  - Keep CachyOS support fully functional and migration-compatible.
+
+
+F-003 — AI recommendations are not truly based on the detected local system
+Severity: HIGH
+Evidence:
+  - The advisor prompt explicitly tells Codex that the host is CachyOS/Arch and requests CachyOS package names.
+  - The deterministic fallback also returns the CachyOS mapping.
+  - Advisor package suggestions are mostly documentation; bootstrap installation uses static mappings plus trusted package names.
+Impact:
+  - The requested host-aware behavior does not exist.
+  - Asking AI for raw shell commands/package names creates avoidable trust and portability problems.
+  - A non-coder cannot easily distinguish installed, missing, unavailable, optional, or unverified tools.
+Required remediation:
+  - Collect a minimal redacted `HostProfile` locally.
+  - Ask AI primarily for capabilities (for example, "Rust compiler", "C compiler", "SQLite CLI", "browser test runtime") and rationale, not executable commands.
+  - Translate capabilities into provider-owned package candidates.
+  - Verify package candidates with the local package manager metadata before displaying them as installable.
+  - Construct command argv deterministically; never execute model-provided shell text.
+  - Mark each recommendation as required/optional, installed/missing, verified/unverified, and official-repository/third-party.
+  - Require explicit review before installation.
+  - Provide a deterministic offline fallback.
+
+
+F-004 — Project configuration accepts insufficiently validated raw values
+Severity: HIGH
+Evidence:
+  - `ProjectConfig.from_dict()` forwards most present values directly to the dataclass.
+  - `SandboxConfig.from_dict()` then applies Python `bool()` to incoming values. A non-empty string such as `"false"` evaluates to true.
+  - The schema version remains 1 and no explicit migration registry is visible.
+Impact:
+  - Malformed or hand-edited JSON can produce surprising flags and late failures.
+  - Future field renames for platform support could break old answer files or silently lose intent.
+  - Validation logic is duplicated at multiple boundaries.
+Required remediation:
+  - Add strict field parsers for booleans, enums, strings, paths, and string lists.
+  - Reject ambiguous values rather than guessing.
+  - Return field-addressed, beginner-readable validation errors.
+  - Introduce schema version 2 and an ordered migration registry.
+  - Preserve loading of v1 files, including `cachyos_packages`, by explicitly mapping them to Arch-family extras.
+  - Keep unknown fields in a warning/extension area or reject them according to a documented compatibility policy.
+  - Run the same canonical validator from CLI, GUI, generator, and loaded answer files.
+
+
+F-005 — Source modules and key functions are becoming god-file/god-function risks
+Severity: HIGH
+Evidence:
+  - `templates.py` exceeds 2,100 lines.
+  - `cli.py` exceeds 1,800 lines.
+  - `sandbox.py` exceeds 1,300 lines.
+  - Wizard, parser, generation, validation, and GUI-payload functions combine many branches and responsibilities.
+Impact:
+  - Larger context windows are consumed by unrelated code.
+  - Merge conflicts and accidental cross-feature regressions become more likely.
+  - Agents have difficulty selecting only the relevant implementation surface.
+  - Tests tend to couple to broad modules instead of clear domain seams.
+Required remediation:
+  - Split by cohesive responsibility in compatibility-preserving steps.
+  - Keep old imports and entry points as re-export/call-through shims until a deprecation cycle completes.
+  - Split templates by generated artifact family, not one file per tiny template.
+  - Split CLI parsing, command handlers, and shared presentation.
+  - Split sandbox model/rendering, host checks, and command orchestration.
+  - Split wizard question groups and state transitions.
+  - Add a source structure auditor with soft thresholds and documented exemptions.
+  - Do not solve a god file by creating dozens of empty or one-function files.
+
+
+F-006 — Generated context is thorough but too repetitive for first-run and agent retrieval
+Severity: MEDIUM
+Evidence:
+  - A representative generated workspace produced more than 21,000 words of text.
+  - `AGENTS.md`, `FIRST_PROMPT.md`, and `NEXT_STEPS.md` alone exceeded 2,300 words.
+  - Safety, testing, implementation-note, and progress rules recur across multiple templates.
+Impact:
+  - Beginners can lose the immediate next action.
+  - Agents may repeatedly read large overlapping files, increasing cost and reducing focus.
+  - Duplicate policy text can drift and contradict itself.
+Required remediation:
+  - Generate a one-page `START_HERE.md` for humans.
+  - Generate a compact `docs/AGENT-INDEX.md` mapping task types to the minimum relevant files.
+  - Centralize canonical policies and reference them from task prompts.
+  - Keep full documents available under an Advanced/Reference path.
+  - Generate concise, task-specific prompt packets containing only goal, constraints, affected surfaces, acceptance checks, and required references.
+  - Add tests preventing conflicting duplicate model/security/deployment statements.
+
+
+F-007 — GUI boundary does not consistently convert failures into safe, actionable responses
+Severity: MEDIUM
+Evidence:
+  - Some bridge methods catch only `ValueError`; validation, file I/O, browser opening, Codex status, and launch can raise other exceptions.
+  - The frontend is intentionally small, but it lacks a durable save/resume state and field-specific remediation flow.
+Impact:
+  - A beginner can receive raw backend errors or a failed promise without understanding the correction.
+  - Progress can be lost when a wizard session is interrupted.
+Required remediation:
+  - Add one audited exception boundary that maps known error classes to stable error codes and plain-language messages.
+  - Log safe diagnostic details locally without secrets.
+  - Return field paths for validation issues.
+  - Add save/resume of a draft configuration using atomic local writes.
+  - Add guided and advanced modes using the same canonical schema.
+  - Never hide approval, sandbox, network, package, or deployment decisions in advanced mode only.
+
+
+F-008 — Same-day duplicate idea prompts can overwrite previous prompt files
+Severity: MEDIUM
+Evidence:
+  - The prompt filename is based on date, mode, and slug.
+  - `write_idea_prompt()` records whether the file existed but unconditionally uses `write_text()` at the same path.
+Impact:
+  - A repeated request with the same slug on the same date can destroy a reviewed prompt draft.
+Required remediation:
+  - Use the existing safe atomic writer.
+  - Default to collision-resistant suffixes (`-02`, timestamp, or short content ID).
+  - Permit explicit overwrite only with a reviewed flag and backup.
+  - Add regression tests for duplicate prompt generation.
+
+
+F-009 — Sandbox image and permissions need platform separation and tighter defaults
+Severity: MEDIUM
+Evidence:
+  - The generated container always starts from Arch Linux because the host target is assumed to be CachyOS.
+  - `/home/codex` is made mode `0777` during image construction.
+Impact:
+  - Host platform and container toolchain platform are conflated.
+  - World-writable home permissions are broader than required and can mask ownership design issues.
+Required remediation:
+  - Make container toolchain profile an explicit independent choice, with a safe default derived from project needs rather than host identity alone.
+  - Provide tested Arch and Debian/Ubuntu base profiles.
+  - Create the runtime user/home with explicit UID/GID handling and the narrowest practical permissions.
+  - Keep project workspace mounts and host-home exclusions.
+  - Preserve rootless preflight and constrained-network defaults.
+  - Add tests for rootless UID/GID, stale runtime paths, volume ownership, and no accidental host credential mounts.
+
+
+F-010 — Deployment is prohibited but not modeled as a safe workflow
+Severity: HIGH
+Evidence:
+  - Generated rules correctly prohibit deployment without explicit approval.
+  - There is no first-class deployment target/profile, immutable plan, artifact digest, backup/rollback contract, or gated apply state machine.
+Impact:
+  - Users may eventually bypass AgentKit and give Codex an unstructured production request.
+  - Non-coders lack a safe path from local success to staging/production.
+Required remediation:
+  - Add deployment planning as a distinct domain with `plan`, `check`, `build`, and later `apply` operations.
+  - Default to plan/check only.
+  - Make secrets external references, never values stored in AgentKit project files or agent prompts.
+  - Require tests, clean/known source state, target identity, immutable artifact digest, migration/backup plan, health checks, and rollback before apply.
+  - Require explicit human confirmation outside the model and record a redacted local audit event.
+  - Prefer OIDC or target-native short-lived identity over long-lived CI deployment credentials.
+  - Never let Codex call production apply autonomously.
+
+
+F-011 — CI is good at least privilege but can be hardened against supply-chain drift
+Severity: MEDIUM
+Evidence:
+  - Workflow-level `contents: read` is correctly present.
+  - `actions/checkout@v7` and `actions/setup-python@v6` are tag-pinned, not commit-SHA-pinned.
+  - The job runs on Ubuntu only and does not exercise package-provider behavior for Debian/Arch.
+Impact:
+  - A moved action tag can change executed workflow code.
+  - Cross-distribution regressions will be found by users instead of CI.
+Required remediation:
+  - Pin every action to a reviewed full commit SHA with a version comment.
+  - Add generated golden/unit tests for all providers.
+  - Add containerized smoke jobs for supported distribution families where practical.
+  - Add dependency review/automated update policy when the repository's GitHub features permit it.
+  - Add release artifact checksums, attestations/provenance, and an SBOM when publishing installable artifacts.
+  - Keep the default workflow permissions read-only; grant narrow job-level permissions only where necessary.
+
+
+F-012 — Explicit setuptools package list will become fragile after modularization
+Severity: MEDIUM
+Evidence:
+  - `pyproject.toml` explicitly lists only `agent_starter` and `agent_starter.gui`.
+Impact:
+  - New packages such as `agent_starter.platforms` or `agent_starter.deployment` could work from source but be omitted from built wheels/installations.
+Required remediation:
+  - Use controlled setuptools package discovery with include/exclude rules.
+  - Add a wheel-install smoke test that imports every public package and runs `agent-starter --help`, generation, and validation from an isolated environment.
+
+
+F-013 — Package-name and related validation logic is duplicated
+Severity: MEDIUM
+Evidence:
+  - Similar package validation occurs in CLI and generator paths.
+Impact:
+  - Rules can drift across CLI, GUI, deterministic generation, and platform providers.
+Required remediation:
+  - Centralize package/capability validation in the provider/domain layer.
+  - Make command handlers presentation-only around canonical services.
+
+
+F-014 — Current "doctor" output is an inventory, not a remediation graph
+Severity: MEDIUM
+Evidence:
+  - It lists Python/platform and a fixed set of commands, including `pacman` on non-Arch hosts.
+Impact:
+  - Beginners see "missing" without knowing whether it is required, why it matters, or the safe next command.
+Required remediation:
+  - Return structured checks with status: PASS, OPTIONAL, ACTION NEEDED, BLOCKED, or UNVERIFIED.
+  - Include a plain-language reason and exact reviewed remediation plan.
+  - Separate host prerequisites, project prerequisites, Codex status, sandbox readiness, and deployment readiness.
+  - Support `--json` without embedding executable AI text.
+
+
+F-015 — The codebase needs an explicit policy for source and generated-project modularity
+Severity: HIGH
+Evidence:
+  - Existing source concentration is already visible.
+  - Generated guidance promotes maintainability but does not enforce or consistently measure responsibility boundaries.
+Impact:
+  - Agents tend to append features to the file they already opened, leading to gradual god-file growth.
+Required remediation:
+  - Add a modularity contract to generated `AGENTS.md` and architecture docs.
+  - Add soft structure checks and require an exception rationale when thresholds are exceeded.
+  - Maintain a generated code map with module purpose and public boundaries.
+  - Teach the task composer to include "affected module" and "new responsibility" checks.
+
+
+5. TARGET DESIGN PRINCIPLES
+===========================
+
+Every phase should uphold these principles.
+
+P-01 Deterministic core, advisory AI
+  AI may classify a request, explain tradeoffs, and suggest capabilities. Python code owns path safety, schema validation, package resolution, command construction, write behavior, and deployment gates.
+
+P-02 Quality-first Sol default
+  Use `gpt-5.6-sol` with medium reasoning for the default project model policy. A user may explicitly override it. Do not silently route to a cheaper model.
+
+P-03 Host-adaptive, not host-assuming
+  Detect host facts, map them to a provider, verify local capabilities, and explain unsupported states.
+
+P-04 Progressive disclosure
+  Show beginners the next safe decision and its consequence. Keep advanced detail available without forcing it into every prompt.
+
+P-05 One primary reason to change per module
+  Cohesive modules are preferred. Avoid both god files and arbitrary micro-file fragmentation.
+
+P-06 No invisible side effects
+  Generation, recommendation, validation, doctor, and deployment plan/check must be read-only except for explicit local output paths. Install/apply operations require a separate, visible action.
+
+P-07 Least privilege and no secret ingestion
+  Keep commands network-off by default, scope writes to the workspace, and represent secrets as external references only.
+
+P-08 Compatibility before cleanup
+  Migrate answer schemas, preserve entry points, and test old generated projects before deleting compatibility shims.
+
+P-09 Test the generated product, not only the generator
+  Every supported host/provider and project type needs generation, validation, script syntax, and isolated-install coverage.
+
+P-10 Explain failure in user language
+  Every actionable failure should identify what failed, why it matters, what is safe to do next, and whether the project was changed.
+
+
+6. PROPOSED TARGET MODULE SHAPE
+==============================
+
+This is a direction, not a requirement to create every file at once. Create a package only when a phase moves real behavior into it. Do not add empty placeholders.
+
+agent_starter/
+  __init__.py
+  __main__.py
+
+  cli.py                         Compatibility entry point; delegates to cli_app
+  cli_app/
+    parser.py                    Parser construction and shared argument types
+    main.py                      Dispatch only
+    output.py                    Human/JSON rendering
+    commands/
+      project.py                 new/generate/validate/status/prompt
+      codex.py                   auth/launch/model status
+      sandbox.py                 sandbox subcommands
+      platform.py                doctor/toolchain recommendations
+      deployment.py              plan/check/build/apply gate
+      github.py                  local readiness and reviewed remote operations
+
+  config.py                      Public ProjectConfig compatibility exports
+  config_schema/
+    models.py                    Typed configuration records
+    parse.py                     Canonical strict parsers and validation issues
+    migrate.py                   Ordered schema migrations
+    redact.py                    Persisted/logged representation
+
+  model_policy.py                Codex model/reasoning policy and validation
+
+  platforms/
+    base.py                      HostProfile, capability, package plan protocols
+    detect.py                    /etc/os-release and executable/capability probes
+    catalog.py                   Logical tool capabilities
+    arch.py                      CachyOS/Arch package provider
+    debian.py                    Debian-family provider; Ubuntu overrides by data
+
+  recommendations/
+    service.py                   Orchestrates local facts, AI, fallback, verification
+    schema.py                    Strict structured AI response
+    prompts.py                   Read-only capability-oriented advisor prompt
+    verify.py                    Provider verification and confidence/status
+
+  generation/
+    service.py                   File-map and safe-write orchestration
+    validate.py                  Generated workspace validation
+    registry.py                  Template/artifact registry
+    safe_write.py                Existing path/conflict/backup primitives
+
+  templates.py                   Temporary compatibility re-exports
+  template_sets/
+    core.py                      AGENTS, Start Here, first/next prompt
+    docs.py                      Requirements/architecture/testing/security docs
+    scripts.py                   Build/run/check/bootstrap/doctor scripts
+    codex.py                     .codex config and skill files
+    github.py                    CI/repository files
+    sandbox.py                   Container and rootless helper files
+    deployment.py                Deployment contracts and helper files
+
+  sandbox.py                     Temporary compatibility re-exports
+  sandboxing/
+    models.py                    Sandbox profile and mount/network policy
+    render.py                    Containerfile/config rendering
+    preflight.py                 Host/rootless diagnostics
+    commands.py                  Build/check/clean plan construction
+
+  wizard.py                      Temporary compatibility entry point
+  guided/
+    session.py                   Wizard state and save/resume
+    questions.py                 Reusable field groups
+    project_setup.py             Initial project wizard flow
+    task_composer.py             Feature/fix/change/review/deploy-plan intake
+    explanations.py              Plain-language choice/remediation text
+
+  structure/
+    audit.py                     AST/text structure checks
+    policy.py                    Thresholds, exemptions, result model
+    code_map.py                  Source/module map generation
+
+  deployment/
+    models.py                    Target/profile/plan/result records
+    plan.py                      Immutable plan and digest
+    checks.py                    Prerequisite and rollback checks
+    artifacts.py                Reproducible local artifact generation
+    targets/                     Added only for real supported target types
+    apply.py                     Human-gated executor; disabled until Phase 6 exit
+
+  gui/
+    app.py
+    bridge.py                    Thin bridge using shared application services
+    errors.py                    Stable safe error translation
+    static/
+
+Compatibility requirement:
+
+  - Existing imports such as `agent_starter.models.ProjectConfig`, CLI script entry points, current answers JSON, and existing generated workspace validation must continue to work throughout the migration.
+  - Move code behind old modules first; remove shims only in a documented later major release.
+
+
+7. DATA MODEL CHANGES
+=====================
+
+7.1 Schema version 2
+--------------------
+
+Introduce explicit v2 with a migration path from v1.
+
+Suggested high-level records:
+
+  ProjectConfig
+    schema_version
+    kit_version
+    project
+    stack
+    quality
+    agent
+    source_control
+    host_policy
+    sandbox
+    deployment
+    advisor
+
+Do not require a full nested rewrite in one patch. The first safe step may keep current fields while adding canonical parsing and migration functions.
+
+7.2 Platform-neutral package intent
+-----------------------------------
+
+Replace authoritative use of:
+
+  cachyos_packages: list[str]
+
+with concepts similar to:
+
+  requested_capabilities: list[str]
+  extra_packages_by_provider: dict[str, list[str]]
+  detected_host: optional non-sensitive summary
+
+Migration rule:
+
+  v1 `cachyos_packages` -> v2 `extra_packages_by_provider["arch"]`
+
+Never reinterpret an old Arch package name as a Debian package name.
+
+7.3 Model policy
+----------------
+
+Suggested fields:
+
+  provider: "openai"
+  model: "gpt-5.6-sol"
+  reasoning_effort: "medium"
+  selection: "explicit" | "inherit"
+  allow_task_routing: false
+  fallback_behavior: "ask"
+
+The default generated policy for this project migration should be explicit Sol/medium. If a user later selects "inherit", clearly show that project behavior depends on their global Codex config.
+
+7.4 Host profile
+----------------
+
+Collect only facts needed for safe recommendations:
+
+  os_id
+  os_id_like
+  pretty_name
+  version_id
+  architecture
+  package_provider
+  executable availability and versions
+  rootless Podman prerequisites/status
+  project-selected languages/targets
+
+Do not collect username, hostname, home path, IP addresses, shell history, environment dumps, tokens, browser state, SSH configuration, or unrelated installed packages.
+
+7.5 Recommendation schema
+-------------------------
+
+AI response should use data such as:
+
+  summary
+  recommended_capabilities[]
+    capability_id
+    purpose
+    requirement: required | optional
+    rationale
+    confidence
+  architecture_notes[]
+  questions[]
+  risks[]
+
+Package names and command argv should be filled by deterministic provider resolution after the AI response. If allowing package candidates from AI for an unknown platform, label them unverified and never make them executable until provider verification succeeds.
+
+7.6 Task request schema
+-----------------------
+
+Create a stable task packet:
+
+  task_type: feature | fix | change | review | cleanup | docs | tests | deploy-plan
+  outcome
+  current_behavior
+  desired_behavior
+  reproduction_or_example
+  affected_surfaces
+  must_not_change
+  data_or_security_risk
+  acceptance_checks
+  user_notes
+
+The generated Codex prompt should be a rendering of this schema, not a free-form concatenation of every wizard answer.
+
+7.7 Deployment schema
+---------------------
+
+Represent deployment intent without secrets:
+
+  target_id
+  target_type
+  environment: local | staging | production
+  source_revision
+  artifact_type
+  artifact_digest
+  build_command_id
+  required_checks[]
+  secret_references[]
+  migration_plan_reference
+  backup_plan_reference
+  health_checks[]
+  rollback_steps[]
+  approval_state
+  plan_digest
+
+`secret_references` name a mechanism or variable, not its value.
+
+
+8. PHASE PLAN
+=============
+
+Each phase contains objectives, tasks, tests, documentation, and exit criteria. Codex should update a migration ledger after every meaningful slice. Do not mark a checkbox complete merely because a file was created; record the exact test or inspection that proves completion.
+
+
+PHASE 0 — BASELINE, COMPATIBILITY CONTRACT, AND MIGRATION LEDGER
+---------------------------------------------------------------
+Priority: P0 / begin here
+Remote side effects: prohibited
+System/package changes: prohibited
+
+Objectives:
+
+  - Establish a reproducible baseline before refactoring.
+  - Protect current CLI, GUI service boundaries, answer files, generated projects, and safety behavior.
+  - Convert this plan into an auditable implementation ledger.
+
+Tasks:
+
+P0-001 Read repository instructions and preserve local work
+  - Read `AGENTS.md` if present, README, SECURITY, CONTRIBUTING, CHANGELOG, pyproject, current docs, scripts, and tests.
+  - Inspect `git status` and current branch.
+  - Never reset, clean, stash, discard, or overwrite user changes.
+  - Record any pre-existing failures separately from migration failures.
+
+P0-002 Create `docs/GPT-5.6-SOL-MIGRATION-STATUS.md`
+  Include:
+    - current revision and dirty-state summary without sensitive paths/content;
+    - exact baseline commands and results;
+    - phase/task checklist using IDs from this plan;
+    - compatibility promises;
+    - open decisions and blockers;
+    - latest verified supported host matrix.
+
+P0-003 Run trusted baseline checks
+  Preferred order:
+    1. Python compile/syntax checks.
+    2. Unit/integration suite.
+    3. Shell syntax checks.
+    4. CLI help/doctor/generation/validation smoke checks.
+    5. Isolated package build/install test if already provided.
+  - Do not install packages merely to make the baseline green.
+  - Record exact pass/fail counts and commands.
+
+P0-004 Add characterization fixtures
+  Capture representative output for:
+    - new Python CLI project;
+    - existing project conflict/proposal behavior;
+    - custom command rejection/approval;
+    - generated `.codex/config.toml`;
+    - rootless Podman disabled and enabled profiles;
+    - v1 answers JSON round-trip;
+    - GUI payload-to-config path;
+    - duplicate idea prompt behavior (expected to fail until F-008 is fixed).
+  Normalize timestamps and temporary roots rather than approving unstable snapshots.
+
+P0-005 Write a compatibility contract
+  At minimum:
+    - `agent-starter` and `agent-starter-gui` entry points remain.
+    - Existing CLI command names and documented flags remain unless formally deprecated.
+    - v1 answers files load through a migration path.
+    - Existing generated projects remain valid or receive a clear migration command.
+    - No new third-party core runtime dependency.
+    - Existing write/conflict/backup safety is preserved.
+    - No automatic install, push, release, or deploy is introduced.
+
+P0-006 Record review findings as issues/tasks
+  - Add the F-001 through F-015 IDs to the status ledger.
+  - Link code/tests as work begins.
+
+Tests/gates:
+
+  - Current baseline results are recorded before behavior changes.
+  - Characterization tests fail only where explicitly documenting an existing defect.
+  - No generated public interface is removed.
+  - Repository remains unpushed and undeployed.
+
+Documentation:
+
+  - `docs/GPT-5.6-SOL-MIGRATION-STATUS.md`
+  - A short compatibility section in maintainer documentation.
+
+Exit criteria:
+
+  - Baseline and known failures are reproducible.
+  - Compatibility promises are explicit.
+  - Phase 1 can proceed without guessing what must remain stable.
+
+Rollback:
+
+  - Phase 0 should contain only tests and documentation. Revert individual additions if they are inaccurate; never remove useful baseline evidence to make later changes appear green.
+
+
+PHASE 1 — MODEL POLICY, STRICT SCHEMA, AND MODULARIZATION SEAMS
+--------------------------------------------------------------
+Priority: P0
+Depends on: Phase 0
+Remote side effects: prohibited
+
+Objectives:
+
+  - Complete the authoritative GPT-5.6-SOL migration.
+  - Create one canonical validation/migration path.
+  - Begin reducing source concentration without changing behavior.
+
+Tasks:
+
+P1-001 Introduce model policy
+  - Add a small, typed model-policy module.
+  - Default to `gpt-5.6-sol`, medium reasoning, quality-first behavior.
+  - Replace `CODEX_REFERENCE_MODEL` and every authoritative GPT-5.5 recommendation.
+  - Distinguish display label from exact CLI model ID.
+  - Permit explicit user/project override and inherited-global mode.
+  - On unsupported/unavailable model, stop with clear remediation; do not silently select another model.
+  - Generate/update project `.codex/config.toml` using current supported keys.
+
+P1-002 Add strict canonical parsers
+  - Implement strict boolean parsing (`true`/`false`, actual JSON booleans), enum validation, bounded strings, lists, and paths.
+  - Reject ambiguous strings instead of using generic `bool(value)`.
+  - Produce structured `ValidationIssue` records: field path, code, human message, safe remedy.
+  - Route CLI answers, loaded JSON, and GUI payload through the same parser.
+
+P1-003 Add v1 -> v2 migration
+  - Increment schema version.
+  - Preserve timestamps and recognized data.
+  - Move `cachyos_packages` to Arch-only extra packages/capabilities.
+  - Produce migration warnings for fields whose semantics changed.
+  - Add `agent-starter config migrate --input ... --output ...` or equivalent dry-run/explicit-write workflow.
+  - Never overwrite the original answers file by default.
+
+P1-004 Centralize package and custom-command validation
+  - Remove duplicate validators from command/generator paths.
+  - Ensure package strings and custom commands are validated once in the domain/service layer.
+  - Preserve `--allow-custom-commands` behavior.
+
+P1-005 Start CLI split
+  - Move parser construction and one low-risk command family into a package.
+  - Keep `agent_starter.cli:main` as the public entry point.
+  - Add import/CLI compatibility tests.
+  - Do not split all commands in one oversized patch.
+
+P1-006 Start template split
+  - Move one cohesive template family (recommended: Codex config/core prompts) behind a registry.
+  - Keep `templates.py` exports working.
+  - Add output-equivalence tests after timestamp normalization.
+
+P1-007 Fix package discovery
+  - Replace the fixed setuptools package list with controlled discovery.
+  - Build a wheel/sdist in an isolated test path.
+  - Install it and import new subpackages.
+
+P1-008 Fix duplicate idea prompt overwrite
+  - Use atomic safe writes.
+  - Generate a collision-safe filename or proposal.
+  - Add explicit overwrite/backup behavior only if needed.
+
+Tests/gates:
+
+  - No authoritative generated/documented GPT-5.5 baseline remains.
+  - Generated config contains `gpt-5.6-sol` and medium reasoning when policy is explicit.
+  - v1 answer fixtures load and migrate deterministically.
+  - Malformed booleans such as `"false"`, `"0"`, arrays, or objects are rejected with field-specific errors.
+  - Existing CLI help and command smoke tests pass.
+  - Source checkout and built-wheel behavior match.
+  - Duplicate idea prompts no longer lose earlier content.
+  - Existing safe-write/conflict tests remain green.
+
+Documentation:
+
+  - Model policy and override behavior.
+  - v1/v2 schema migration guide.
+  - Maintainer module-boundary notes.
+
+Exit criteria:
+
+  - GPT-5.6-SOL is the tested default policy.
+  - One canonical parser owns configuration validation.
+  - v1 data compatibility is proven.
+  - At least one CLI and one template seam have been extracted without API breakage.
+
+Rollback:
+
+  - Preserve old public modules as shims.
+  - Keep migration output separate from source v1 files.
+  - If a split causes packaging/import regressions, restore delegation to the old implementation while retaining tests and policy/schema improvements.
+
+
+PHASE 2 — PLATFORM DETECTION AND CACHYOS/ARCH, DEBIAN, UBUNTU PROVIDERS
+---------------------------------------------------------------------
+Priority: P0
+Depends on: Phase 1
+Remote side effects: prohibited by default
+
+Objectives:
+
+  - Make host support explicit, testable, and provider-driven.
+  - Preserve CachyOS while adding first-class Debian and Ubuntu paths.
+  - Separate host platform, project target platform, and sandbox image profile.
+
+Tasks:
+
+P2-001 Define `HostProfile` and provider protocol
+  Provider responsibilities should include:
+    - detection confidence;
+    - package manager identity;
+    - installed-package query;
+    - available-package verification;
+    - capability-to-package resolution;
+    - reviewable update/install argv plan;
+    - rootless Podman prerequisite checks;
+    - shell/executable differences;
+    - safe documentation labels.
+
+P2-002 Implement robust detection
+  - Parse `/etc/os-release` using `ID` and `ID_LIKE`.
+  - Confirm expected package manager executables.
+  - Detect architecture through Python/platform interfaces.
+  - Distinguish unsupported, unknown, and partially supported.
+  - Allow an explicit `--platform-provider` override with a warning and proof check.
+  - Never infer a provider solely from the presence of one executable if OS metadata contradicts it.
+
+P2-003 Implement Arch-family provider
+  - Support CachyOS and Arch through `pacman`.
+  - Preserve current package mappings, but move them to capability records.
+  - Continue to avoid AUR by default.
+  - Mark AUR-only suggestions unverified/manual and never auto-enable an AUR helper.
+
+P2-004 Implement Debian-family provider
+  - Support Debian and Ubuntu using script-safe `apt-get` for generated scripts.
+  - Use `apt-cache`/package metadata for verification.
+  - Treat Ubuntu flavor differences as data/overrides unless actual behavior needs a separate class.
+  - Do not automatically add PPAs or third-party repositories.
+  - If a capability requires a third-party source, produce a manual security review step including source, key, pinning, and removal instructions; do not install it during normal bootstrap.
+
+P2-005 Replace package names with capability catalog
+  Initial capabilities should cover only tools currently supported by generated project types, for example:
+    - base shell/build tools;
+    - Git/curl/JSON/search tools;
+    - Python runtime/venv/pip when selected;
+    - Rust toolchain strategy;
+    - Node/npm when selected;
+    - PHP and extensions when selected;
+    - C/C++ compiler/build tools;
+    - Java JDK;
+    - Go;
+    - database CLIs/headers where needed;
+    - rootless Podman prerequisites;
+    - GitHub CLI as optional.
+  Package mapping must be verified in tests or against local provider metadata.
+
+P2-006 Rewrite doctor as structured checks
+  - Detect provider first.
+  - Show PASS/ACTION NEEDED/OPTIONAL/BLOCKED/UNVERIFIED.
+  - Explain why each capability is needed.
+  - Offer `--json` structured output.
+  - Do not tell Ubuntu/Debian users that missing `pacman` is a problem.
+
+P2-007 Generate platform-specific bootstrap plan
+  - `./scripts/bootstrap-dev.sh` remains print/plan-only by default.
+  - `--install` remains explicit and human-operated.
+  - Construct argv arrays, not concatenated AI strings.
+  - On Debian/Ubuntu, separate package-index refresh from installation and explain why it is needed.
+  - Detect already-installed tools and avoid unnecessary package operations.
+  - Do not perform full system upgrades as part of project bootstrap.
+
+P2-008 Decouple sandbox image profile
+  - Add explicit profiles such as `arch-toolchain` and `debian-toolchain` only where tested.
+  - Host may be Ubuntu while the project deliberately uses an Arch image, or vice versa; show this as a choice.
+  - Tighten user/home ownership and remove broad `0777` where not needed.
+
+P2-009 Add provider matrix tests
+  - Unit tests for representative `/etc/os-release` fixtures.
+  - Golden package plans for CachyOS, Arch, Debian, and Ubuntu.
+  - Container smoke tests for Debian/Ubuntu and Arch-family package verification where CI permits.
+  - Unsupported-distribution error tests.
+
+Tests/gates:
+
+  - `doctor`, generated setup docs, and bootstrap plans are accurate for all three requested host families.
+  - No universal `pacman` check remains.
+  - No AI text becomes a shell command.
+  - Plan-only commands change no system state.
+  - Existing CachyOS output remains semantically equivalent where appropriate.
+  - Debian and Ubuntu fresh-environment smoke tests generate and validate representative projects.
+
+Documentation:
+
+  - Supported host matrix.
+  - Provider detection/override behavior.
+  - Package source and third-party repository policy.
+  - Rootless Podman prerequisites by provider.
+
+Exit criteria:
+
+  - CachyOS/Arch, Debian, and Ubuntu are first-class documented/tested hosts.
+  - A user receives the correct package plan for the detected provider.
+  - Sandbox profile is independent from host provider.
+
+Rollback:
+
+  - Keep current Arch provider as the fallback only when the host is positively detected as Arch-family.
+  - Unknown hosts must fail clearly rather than receiving an Arch install command.
+
+
+PHASE 3 — SAFE HOST-AWARE AI RECOMMENDATIONS
+--------------------------------------------
+Priority: P1
+Depends on: Phase 2
+Remote side effects: prohibited by default
+
+Objectives:
+
+  - Let AI tailor recommendations to the real local development environment.
+  - Preserve deterministic verification and explicit approval.
+  - Make recommendations understandable to non-coders.
+
+Tasks:
+
+P3-001 Build minimal redacted host snapshot
+  - Include only fields from section 7.4.
+  - Add tests proving forbidden fields are absent.
+  - Show the user exactly what will be sent to the advisor before first use.
+
+P3-002 Replace package-command advisor prompt
+  - Ask for logical capabilities, architecture fit, risk, and questions.
+  - Do not ask the model to emit install commands as the primary output.
+  - Require strict JSON and validate every field/count/length.
+  - Treat all advisor content as untrusted data.
+
+P3-003 Recommendation pipeline
+  1. Detect host and project needs.
+  2. Resolve a deterministic baseline capability set.
+  3. Optionally ask Sol for additions/removals/rationale.
+  4. Parse strict structured output.
+  5. Resolve capabilities through the provider.
+  6. Verify candidates with local metadata.
+  7. Compare with installed tools.
+  8. Render a review screen.
+  9. Save approved intent, not raw executable commands.
+
+P3-004 Confidence and provenance
+  Each item should show:
+    - reason needed;
+    - source: deterministic, AI suggested, or user requested;
+    - provider/package mapping;
+    - verification status;
+    - installed status;
+    - official vs third-party source;
+    - confidence and unresolved questions.
+
+P3-005 Explicit approval state
+  - User can accept/reject each optional capability.
+  - Required capabilities can be challenged; explain resulting limitations.
+  - Store the decision separately from advisor raw output.
+  - Raw output should remain redacted/local and never be required for future generation.
+
+P3-006 Offline behavior
+  - Deterministic fallback must remain complete enough to generate and validate a project.
+  - Display that the recommendation is local/default, not AI-reviewed.
+
+P3-007 Recommendation cache
+  - Cache only safe structured recommendations.
+  - Key by project intent plus a non-identifying host/provider fingerprint.
+  - Invalidate when OS version/provider/project stack changes.
+  - Provide a visible refresh action.
+
+P3-008 Adversarial tests
+  Test advisor responses containing:
+    - shell metacharacters;
+    - `sudo`, curl pipes, or destructive commands;
+    - credential requests;
+    - unknown capabilities;
+    - fake package names;
+    - enormous fields;
+    - additional JSON keys;
+    - prompt-injection text.
+  Expected result: reject, quarantine, or label unverified; never execute.
+
+Tests/gates:
+
+  - AI output cannot directly alter command argv.
+  - Package installation plan contains only provider-verified names or clearly non-executable unverified entries.
+  - Host snapshot contains no credentials or unrelated personal/system data.
+  - Offline generation remains functional.
+  - UI/CLI display identical underlying recommendation state.
+
+Documentation:
+
+  - What data is sent to AI.
+  - Deterministic vs AI roles.
+  - Recommendation verification and approval semantics.
+
+Exit criteria:
+
+  - Local environment materially affects recommendations.
+  - Every executable install action comes from deterministic provider code plus human approval.
+
+Rollback:
+
+  - Disable AI advisor and retain deterministic provider recommendations. No project should become unbootstrappable without AI access.
+
+
+PHASE 4 — NON-CODER GUIDED UX AND TASK COMPOSER
+-----------------------------------------------
+Priority: P1
+Depends on: Phases 1–3
+
+Objectives:
+
+  - Help people who do not code describe changes accurately.
+  - Make safety and technical boundaries visible without jargon overload.
+  - Provide resumable CLI and GUI flows based on the same schema.
+
+Tasks:
+
+P4-001 Add guided/advanced entry modes
+  Guided mode:
+    - asks one decision at a time;
+    - explains consequences;
+    - gives safe defaults;
+    - hides nonessential implementation detail while preserving access.
+  Advanced mode:
+    - exposes full settings;
+    - never bypasses validation or approvals.
+
+P4-002 Implement task composer
+  Offer clear starting choices:
+    - Add a feature
+    - Fix a problem
+    - Change existing behavior
+    - Review or improve code
+    - Improve tests/documentation
+    - Prepare a deployment plan
+
+  Ask only relevant questions. Examples:
+
+  Feature:
+    - What should a person be able to do afterward?
+    - Give one example.
+    - What existing behavior must remain unchanged?
+    - How will you know it works?
+
+  Fix:
+    - What did you do?
+    - What happened?
+    - What should have happened?
+    - Include the exact error text, with secrets removed.
+    - Is it consistent or intermittent?
+
+  Change:
+    - What behavior exists now?
+    - What should replace it?
+    - Which users/data/interfaces must remain compatible?
+
+P4-003 Generate a reviewable task contract
+  Before Codex launch, display:
+    - What Codex will attempt
+    - What it must not change
+    - Files/areas likely involved (when known)
+    - Tests/acceptance checks
+    - Risks/approvals that may be encountered
+    - "Edit answers" and "Approve prompt" actions
+
+P4-004 Plain-language diagnostic model
+  Stable result structure:
+    - code
+    - severity
+    - title
+    - explanation
+    - project_changed: true/false
+    - safe_next_action
+    - technical_details (expandable)
+  Map backend exceptions into this form.
+
+P4-005 Save/resume
+  - Save draft project/task sessions atomically under user-local application data or explicitly chosen project metadata.
+  - Never include secrets.
+  - Show last updated time and selected project.
+  - Permit discard/export.
+
+P4-006 GUI bridge hardening
+  - Catch known filesystem, subprocess, validation, and adapter exceptions.
+  - Return stable error codes, not stack traces.
+  - Log safe local diagnostics with redaction.
+  - Keep path-confinement checks.
+
+P4-007 Accessibility/usability
+  - Keyboard-complete navigation.
+  - Visible focus and labels.
+  - No color-only status.
+  - Copyable remediation commands.
+  - Confirmation wording names the exact consequence.
+
+P4-008 Launch behavior
+  - Show exact model policy, sandbox mode, network state, and target project before launch.
+  - For implementation tasks, launch Sol/medium unless the user explicitly selected another policy.
+  - Do not launch after validation errors.
+
+Tests/gates:
+
+  - CLI and GUI produce equivalent config/task packets from equivalent answers.
+  - Draft state survives restart and contains no credential-like data.
+  - A representative non-coder usability script can create a project and a bug-fix prompt without editing JSON.
+  - Every error identifies whether files changed.
+  - Launch preview identifies model/sandbox/network/project.
+
+Documentation:
+
+  - Beginner walkthroughs using outcomes rather than programming terminology.
+  - "How to describe a feature/fix" examples.
+  - Safety/approval glossary.
+
+Exit criteria:
+
+  - A non-coder can create, review, and launch a bounded task without writing a technical prompt.
+  - Backend and UI use one canonical schema and error model.
+
+Rollback:
+
+  - Preserve current CLI flow as a selectable legacy/advanced path until guided mode is proven.
+
+
+PHASE 5 — AGENT CONTEXT EFFICIENCY AND ANTI-GOD-FILE STRUCTURE
+-------------------------------------------------------------
+Priority: P1
+Depends on: Phase 4 task schema; can overlap with source modularization
+
+Objectives:
+
+  - Reduce repeated context while improving project comprehension.
+  - Discourage god files in AgentKit and generated projects.
+  - Make modularity an observable, reviewable quality characteristic.
+
+Tasks:
+
+P5-001 Generate `START_HERE.md`
+  Maximum purpose:
+    - project summary;
+    - current status;
+    - first safe local commands;
+    - next action;
+    - where to get help.
+  Keep it short and human-oriented.
+
+P5-002 Generate `docs/AGENT-INDEX.md`
+  Include:
+    - project/module map;
+    - task type -> required files table;
+    - current phase and active decision references;
+    - testing commands by surface;
+    - security/deployment policy pointers;
+    - documentation freshness metadata.
+  Codex prompts should read this first, then only the linked relevant documents.
+
+P5-003 Canonical policy fragments
+  - Store each durable policy once in the template/domain layer.
+  - Render references in task prompts rather than copying long blocks.
+  - Tests should detect conflicting model, network, deployment, progress-ledger, or notes-file statements.
+
+P5-004 Structure policy
+  Start with soft warnings, not arbitrary build failures:
+    - source module over approximately 500 logical lines;
+    - function over approximately 80 logical lines;
+    - class/module with multiple unrelated responsibility categories;
+    - new dependency direction that creates a cycle;
+    - repeated append-only changes to an already-large file;
+    - public module with no documented purpose.
+
+  Exemptions:
+    - generated/static data, licenses, protocol tables, or cohesive template payloads may exceed thresholds;
+    - exemption must include a short reason and should not hide executable complexity;
+    - thresholds are signals for review, not universal laws.
+
+P5-005 Add `agent-starter audit-structure`
+  Suggested output:
+    - hotspots sorted by severity;
+    - line/function/class measurements;
+    - likely responsibility groups;
+    - dependency cycles where detectable with the standard library;
+    - changes since recorded baseline;
+    - acknowledged exemptions.
+  Support human and JSON output.
+
+P5-006 Generated modularity contract
+  Add to generated `AGENTS.md`/architecture guidance:
+    - Identify the existing module responsible before editing.
+    - Do not append a second unrelated workflow to an already broad module.
+    - Prefer a vertical slice with clear public boundaries.
+    - Split when a file has more than one primary reason to change.
+    - Do not create empty directories, placeholder abstractions, or one-line wrapper sprawl.
+    - Update the code map when responsibilities move.
+    - Preserve compatibility at public interfaces.
+
+P5-007 Template-specific source split
+  Continue splitting AgentKit's own large modules:
+    - CLI handlers by command family.
+    - Templates by artifact family.
+    - Sandbox rendering vs preflight vs orchestration.
+    - Wizard state vs question groups.
+    - Generator safe writes vs registry vs validation.
+  Every extraction needs equivalence tests.
+
+P5-008 Context budget checks
+  Add non-blocking metrics:
+    - words/lines in first-run files;
+    - duplicate paragraph fingerprints;
+    - number of files a default first prompt requires;
+    - task prompt size.
+  Suggested targets, adjustable after testing:
+    - `START_HERE.md`: one screen to roughly two pages.
+    - `AGENT-INDEX.md`: concise enough to scan first.
+    - default task prompt: generally under 500 words unless security/deployment complexity requires more.
+    - no duplicated canonical safety block across every prompt.
+
+P5-009 Delta-oriented handoff
+  Continuation prompts should include:
+    - current objective;
+    - changes since last handoff;
+    - current failures;
+    - exact relevant docs/modules;
+    - acceptance checks;
+    - unresolved decisions.
+  Do not require rereading every historical note unless the task needs it.
+
+Tests/gates:
+
+  - Structure audit reports existing hotspots without blocking the migration solely due to legacy size.
+  - New executable modules/functions over thresholds require a recorded rationale.
+  - Generated projects contain a useful code/agent index.
+  - Task prompts reference canonical policies and do not contradict them.
+  - Template splits produce equivalent files except intentional UX improvements.
+
+Documentation:
+
+  - Modularity philosophy: cohesive modules, not file-count optimization.
+  - Structure audit thresholds and exemptions.
+  - Agent context selection rules.
+
+Exit criteria:
+
+  - AgentKit's three largest executable-responsibility modules have clear extraction seams and reduced responsibility breadth.
+  - New generated projects actively resist god-file growth.
+  - First-run and continuation context is measurably less repetitive.
+
+Rollback:
+
+  - Keep compatibility shims and old template names while new registries mature.
+  - Structure warnings remain advisory until false positives are understood.
+
+
+PHASE 6 — SECURE DEPLOYMENT PLANNING AND HUMAN-GATED EXECUTION
+-------------------------------------------------------------
+Priority: P1, security-sensitive
+Depends on: Phases 1–5
+Remote side effects: plan/check/build only until all apply gates pass
+
+Objectives:
+
+  - Give non-coders a safe, explicit route from local project to deployment.
+  - Keep Codex in planning/implementation/testing roles, never autonomous production authority.
+  - Make rollback, secrets, provenance, and environment identity mandatory.
+
+Recommended maturity stages:
+
+  Stage A: deployment documentation and plan generation only
+  Stage B: reproducible local artifact build and verification
+  Stage C: staging apply for one narrowly supported target
+  Stage D: production apply after extended burn-in and separate human gate
+
+Do not implement Stage D in the same change that introduces the deployment domain.
+
+Tasks:
+
+P6-001 Define supported deployment target contracts
+  Start narrowly. Candidate initial target types:
+    - static-site artifact;
+    - OCI image artifact (build/check, no push initially);
+    - Linux service bundle/plan;
+    - SSH/rsync plan leveraging existing plan-first behavior.
+  Do not claim generic cloud/Kubernetes support without tested adapters.
+
+P6-002 Generate deployment documentation
+  Suggested `docs/16-DEPLOYMENT.md` or next stable number:
+    - environments and ownership;
+    - build artifact;
+    - configuration and secret references;
+    - data migration/backup;
+    - health/smoke checks;
+    - rollback;
+    - monitoring/log location;
+    - maintenance responsibility.
+
+P6-003 Add `deployment plan`
+  - Read project configuration and a target profile.
+  - Verify source revision/state.
+  - Produce an immutable JSON/text plan and SHA-256 digest.
+  - Show all local/remote writes, commands, network destinations, credentials mechanism, and rollback steps.
+  - Make no remote changes.
+
+P6-004 Add `deployment check`
+  Verify without changing the target where possible:
+    - project validation and tests;
+    - clean or explicitly recorded source state;
+    - artifact reproducibility/checksum;
+    - target identity;
+    - required secret references exist through the platform mechanism without reading their values into logs/prompts;
+    - backup/migration readiness;
+    - health check and rollback completeness;
+    - least-privilege access.
+
+P6-005 Add artifact build
+  - Build locally or in an isolated builder.
+  - Record source revision, commands, tool versions, and checksums.
+  - Generate SBOM/provenance where supported.
+  - Do not push merely because build succeeds.
+
+P6-006 Secrets contract
+  - Never store values in answers JSON, generated docs, agent prompts, logs, or Git.
+  - Use named references to environment files excluded from Git, OS keyrings, CI secret stores, or target-native secret managers.
+  - Codex may identify missing references but must not print/read secret values.
+
+P6-007 Apply gate state machine
+  Required before any apply:
+    - supported target adapter;
+    - exact reviewed plan digest;
+    - passing required checks;
+    - exact artifact digest;
+    - explicit environment and target identifier;
+    - human authentication through target tool;
+    - typed human confirmation outside model output;
+    - rollback available;
+    - redacted local audit event.
+  Plan changes invalidate approval.
+
+P6-008 Codex boundary
+  Generated `AGENTS.md` and task packets must state:
+    - Codex may prepare code, docs, tests, and deployment plans.
+    - Codex may run local plan/check/build in the configured sandbox.
+    - Codex must stop before remote apply, repository push, release publication, database migration, or secret access unless a separate human-approved tool operation is invoked.
+    - A prompt saying "deploy it" is not itself sufficient production authorization.
+
+P6-009 CI/CD identity and provenance
+  - Prefer GitHub OIDC/short-lived credentials for supported cloud targets.
+  - Keep workflow permissions minimal.
+  - Pin actions to full SHAs.
+  - Separate build and deploy jobs/environments.
+  - Use protected environments/manual approval for production.
+  - Attach artifact attestations/checksums.
+
+P6-010 Staging-first tests
+  - Use disposable/local test targets for command-state tests.
+  - Test partial failure and rollback.
+  - Test wrong-target and stale-plan rejection.
+  - Test log redaction.
+  - Test that Codex launch cannot invoke apply through generated scripts.
+
+Tests/gates:
+
+  - Plan/check/build make no unadvertised remote changes.
+  - Stale or modified plan digest is rejected.
+  - Production target cannot be selected by default.
+  - No secret value appears in generated project files, task prompts, stdout/stderr fixtures, or audit logs.
+  - Wrong target, dirty source, failed tests, missing rollback, or missing health check blocks apply.
+  - Apply cannot run from AI-generated free-form command text.
+  - Staging rollback is proven before any production adapter is enabled.
+
+Documentation:
+
+  - Threat model and trust boundaries.
+  - Target-specific runbooks.
+  - Secret-reference guide.
+  - Emergency rollback and audit guide.
+
+Exit criteria:
+
+  - Stage A and B are stable for supported targets.
+  - At least one staging adapter passes failure/rollback tests before production apply is considered.
+  - Production remains human-gated and separately enabled.
+
+Rollback:
+
+  - Disable/remove apply registration while retaining plan/check/build and documentation.
+  - Deployment state must not be required for ordinary local project generation.
+
+
+PHASE 7 — CI, SUPPLY CHAIN, PACKAGING, AND RELEASE HARDENING
+-----------------------------------------------------------
+Priority: P1
+Depends on: functional completion of prior phases
+
+Objectives:
+
+  - Prove supported environments continuously.
+  - Reduce dependency/action drift and packaging surprises.
+  - Produce verifiable releases without broad permissions.
+
+Tasks:
+
+P7-001 Pin GitHub Actions by full SHA
+  - Keep a comment showing the human-readable version.
+  - Establish a reviewed update process.
+  - Maintain workflow-level `contents: read` by default.
+
+P7-002 Expand CI matrix intelligently
+  - Keep supported Python versions.
+  - Native Ubuntu job for the main check suite.
+  - Containerized Debian and Arch-family provider/generation smoke tests.
+  - Avoid duplicating the entire expensive suite when focused provider tests suffice.
+
+P7-003 Add quality tooling as development extras
+  Preserve zero runtime dependencies. Consider a documented maintainer extra for:
+    - formatting/linting;
+    - type checking;
+    - security/static checks;
+    - coverage.
+  Pin or constrain versions and keep `scripts/check.sh` useful without hidden online access.
+
+P7-004 Build/install matrix
+  - Build sdist and wheel.
+  - Install into isolated Python 3.11+ environments.
+  - Verify CLI/GUI entry points as applicable.
+  - Import every discovered package.
+  - Generate and validate representative projects.
+  - Test installer/uninstaller ownership boundaries.
+
+P7-005 Supply-chain controls
+  - Enable dependency review for pull requests where available.
+  - Add automated update policy with human review.
+  - Generate checksums for release artifacts.
+  - Add artifact attestations/provenance for GitHub-hosted builds.
+  - Produce an SBOM for distributed artifacts when practical.
+  - Avoid third-party package repositories in generated host bootstrap by default.
+
+P7-006 Release safety
+  - Release workflow must not trigger on ordinary CI success.
+  - Require version/changelog consistency, clean tests, built artifact smoke tests, and manual/tagged release intent.
+  - Use minimum token permissions.
+  - Never expose a deployment credential to untrusted pull-request code.
+
+P7-007 Security regression suite
+  Include:
+    - unsafe roots and symlink parents;
+    - path traversal attempts;
+    - answers credential patterns;
+    - malformed schema types;
+    - AI command injection payloads;
+    - package-name injection;
+    - prompt collision/data preservation;
+    - GUI error redaction;
+    - deployment stale-plan/wrong-target/secret redaction;
+    - sandbox mount/network policy.
+
+P7-008 Performance/resource checks
+  - Track generation time and peak memory for representative projects.
+  - Avoid invoking Codex or package metadata repeatedly when cache/state is valid.
+  - Lazy-load GUI and optional subsystems.
+  - Ensure doctor/recommendation scans are bounded and avoid enumerating the entire installed system unnecessarily.
+
+Tests/gates:
+
+  - Full CI passes on each supported provider test target.
+  - Built package includes every new subpackage/template asset.
+  - Actions are SHA-pinned.
+  - Release artifact provenance/checksum can be independently verified.
+  - Security regression suite passes.
+
+Documentation:
+
+  - Maintainer release checklist.
+  - Action/dependency update policy.
+  - Supported/tested version matrix.
+
+Exit criteria:
+
+  - Cross-platform promises are continuously proven.
+  - Release artifacts are reproducible enough to identify source and verify integrity.
+
+Rollback:
+
+  - A failing optional provider job may be quarantined only with a tracked blocker and clear support downgrade; do not silently leave documentation claiming support.
+
+
+PHASE 8 — COMPATIBILITY BURN-IN, DOCUMENTATION, AND RELEASE CANDIDATE
+-------------------------------------------------------------------
+Priority: P2
+Depends on: all enabled prior phases
+
+Objectives:
+
+  - Validate the complete beginner journey.
+  - Exercise migrations on real representative projects.
+  - Publish a release only after the new safety/host promises are proven.
+
+Tasks:
+
+P8-001 End-to-end user journeys
+  Test as a fresh user on:
+    - CachyOS/Arch;
+    - Debian;
+    - Ubuntu.
+
+  Journeys:
+    - install AgentKit without sudo;
+    - doctor and project creation;
+    - deterministic and AI-assisted stack recommendation;
+    - review/install plan (without hidden execution);
+    - local checks;
+    - task composer feature/fix flows;
+    - Codex Sol launch preview;
+    - rootless Podman optional flow;
+    - deployment plan/check/build flow;
+    - v1 project migration.
+
+P8-002 Existing-project fixtures
+  Exercise:
+    - clean existing repo;
+    - dirty repo;
+    - conflicting generated files;
+    - symlinked directories;
+    - older AgentKit metadata;
+    - manually edited answers;
+    - projects with large/god-file hotspots.
+
+P8-003 Documentation rewrite by audience
+  Human start:
+    - install, first project, first task, common repairs.
+  Maintainer:
+    - architecture, providers, schemas, security, release.
+  Agent:
+    - concise index, contracts, relevant-doc routing.
+  Operations:
+    - deployment plans, rollback, secrets, audit.
+
+P8-004 Migration report
+  - Document exactly what changed from v0.4.8/GPT-5.5 behavior.
+  - Explain schema migration and model selection.
+  - Explain Debian/Ubuntu support level.
+  - List deprecated fields/modules and removal timeline.
+
+P8-005 Release candidate and burn-in
+  - Produce a release candidate.
+  - Collect only user-submitted issue reports; no telemetry should be added by default.
+  - Fix migration, provider, packaging, and safety regressions before stable release.
+  - Keep old compatibility shims through at least the documented deprecation window.
+
+Tests/gates:
+
+  - Fresh-user journeys pass on all supported host families.
+  - v1 fixtures migrate without data loss or package-name reinterpretation.
+  - Security and deployment gates remain intact.
+  - Documentation commands are executable and current.
+  - No unresolved P0/P1 migration blocker remains.
+
+Exit criteria:
+
+  - Stable release is justified by evidence, not only code completion.
+  - Users can understand the new model, platform, recommendation, modularity, and deployment behavior.
+
+
+9. ACCEPTANCE CRITERIA FOR THE COMPLETE MIGRATION
+================================================
+
+The migration is complete only when all applicable statements are true.
+
+Model and agent policy:
+
+  [ ] Default explicit model policy is `gpt-5.6-sol`.
+  [ ] Default reasoning is medium.
+  [ ] No authoritative GPT-5.5 recommendation remains.
+  [ ] Model override/inherit behavior is visible and tested.
+  [ ] Unavailable Sol never triggers a silent downgrade.
+
+Configuration and compatibility:
+
+  [ ] Strict canonical schema validation is used by CLI, GUI, and file loading.
+  [ ] Schema v1 files migrate to v2 without reinterpretation or data loss.
+  [ ] Ambiguous booleans/types are rejected.
+  [ ] Existing CLI entry points and key commands remain compatible.
+  [ ] Source and built-wheel behavior match.
+
+Platforms and tools:
+
+  [ ] CachyOS/Arch, Debian, and Ubuntu are detected and tested.
+  [ ] Package plans use the correct provider.
+  [ ] Unknown hosts receive no misleading install command.
+  [ ] AI recommendations use a redacted host profile.
+  [ ] AI output is never directly executed.
+  [ ] Package candidates are verified before becoming installable.
+  [ ] Plan-only operation is the default.
+
+Non-coder UX:
+
+  [ ] Guided project and task flows require no JSON editing.
+  [ ] Feature/fix/change/review/deploy-plan task contracts are reviewable.
+  [ ] Errors explain impact, whether files changed, and the safe next step.
+  [ ] Draft sessions can be resumed without storing secrets.
+  [ ] Launch preview shows model, sandbox, network, and project.
+
+Modularity and agent efficiency:
+
+  [ ] Source god-file hotspots are reduced by cohesive extraction.
+  [ ] Compatibility shims preserve imports during transition.
+  [ ] Generated projects receive a code/agent index.
+  [ ] Structure audit reports large/complex responsibility hotspots.
+  [ ] Threshold exemptions require rationale.
+  [ ] Generated prompts reference canonical policies instead of duplicating them.
+  [ ] No placeholder/micro-file explosion is introduced.
+
+Sandbox and security:
+
+  [ ] Rootless Podman remains the default container strategy.
+  [ ] Host credentials/home are not mounted.
+  [ ] Runtime UID/GID and home permissions are narrow and tested.
+  [ ] Command network access remains off by default.
+  [ ] Custom commands still require explicit approval.
+  [ ] Existing path/conflict/backup safety remains green.
+
+Deployment:
+
+  [ ] Deployment has plan/check/build/apply state separation.
+  [ ] Plans have immutable digests.
+  [ ] Secrets are references, not stored values.
+  [ ] Tests/source/artifact/target/backup/health/rollback gates are enforced.
+  [ ] Production apply requires explicit external human confirmation.
+  [ ] Codex cannot autonomously deploy.
+  [ ] Staging rollback is tested before production support is enabled.
+
+CI/release:
+
+  [ ] GitHub Actions are pinned to reviewed commit SHAs.
+  [ ] Workflow permissions remain least privilege.
+  [ ] Provider matrix tests run continuously.
+  [ ] Wheel/sdist install smoke tests pass.
+  [ ] Release artifacts have checksums and provenance/attestation where supported.
+  [ ] Security regression suite passes.
+
+
+10. RECOMMENDED IMPLEMENTATION PRACTICES FOR CODEX
+=================================================
+
+10.1 Work one phase and one coherent slice at a time
+----------------------------------------------------
+
+Codex should not implement every phase in one session. For each slice:
+
+  1. Restate the exact phase/task IDs.
+  2. Inspect relevant code/tests/docs only.
+  3. Add or update a failing characterization test where appropriate.
+  4. Make the smallest coherent implementation.
+  5. Run focused tests.
+  6. Run the full trusted check suite when practical.
+  7. Review the diff for unrelated changes, secrets, permission broadening, and compatibility breaks.
+  8. Update migration status and implementation notes.
+  9. Report exact commands/results and remaining blockers.
+
+10.2 Preserve user work
+-----------------------
+
+Never use destructive cleanup commands to obtain a clean diff. Never overwrite local modifications. When a target file is already modified, merge deliberately or stop with a precise conflict report.
+
+10.3 No speculative dependencies
+---------------------------------
+
+The standard-library runtime is an architectural constraint. Add development or optional dependencies only with written rationale, maintenance/security assessment, and human approval.
+
+10.4 No AI-command execution
+----------------------------
+
+Model output is untrusted data. It may never be passed to `shell=True`, `bash -c`, `eval`, `exec`, or an equivalent command path. Provider code constructs argv from validated identifiers.
+
+10.5 No arbitrary line-count refactor
+-------------------------------------
+
+Use line/function thresholds to find hotspots. Split around responsibilities, test seams, and dependency direction. A cohesive 600-line data/template module can be safer than 30 fragmented files; document exceptions.
+
+10.6 Security-sensitive work requires negative tests
+----------------------------------------------------
+
+For schema, paths, package plans, prompts, sandboxing, and deployment, test misuse and malicious input—not only the happy path.
+
+10.7 Do not deploy or publish during implementation
+---------------------------------------------------
+
+No `git push`, GitHub repository creation, release, package publication, remote deployment, production migration, or secrets access is authorized by this plan. Those require a later explicit human instruction and the applicable gates.
+
+
+11. FIRST IMPLEMENTATION SLICE RECOMMENDATION
+=============================================
+
+The first Codex session should complete Phase 0 and Phase 1 only. A practical sequence is:
+
+  Slice 1A — baseline ledger and characterization tests
+    - Record exact baseline.
+    - Add tests around model text, v1 config loading, malformed booleans, package validation, duplicate idea prompt behavior, and built-package subpackage discovery.
+
+  Slice 1B — model policy
+    - Introduce policy module.
+    - Replace stale GPT-5.5 references.
+    - Generate Sol/medium config.
+    - Add no-silent-fallback behavior and tests.
+
+  Slice 1C — schema parser/migration
+    - Add structured validation issues.
+    - Add v1 -> v2 migration.
+    - Route CLI/GUI/file loading through canonical parsing.
+
+  Slice 1D — safe low-risk modularization
+    - Extract parser/one command family and Codex/core templates.
+    - Keep public shims.
+    - Fix setuptools discovery and isolated install test.
+
+  Slice 1E — duplicate prompt preservation
+    - Atomic collision-safe output and tests.
+
+Stop and review after Phase 1 acceptance criteria. Do not mix Debian/Ubuntu provider work into schema/model patches except for the platform-neutral fields required by v2.
+
+
+12. SOURCE NOTES
+================
+
+Repository and reviewed project guidance:
+  https://github.com/omensealed/omen-agentkit
+  https://github.com/omensealed/omen-agentkit/blob/main/.github/workflows/ci.yml
+  https://github.com/omensealed/omen-agentkit/blob/main/pyproject.toml
+
+Current official Codex model/config/security guidance reviewed 2026-07-13:
+  https://learn.chatgpt.com/docs/models
+  https://learn.chatgpt.com/docs/config-file/config-basic
+  https://learn.chatgpt.com/docs/agent-approvals-security
+
+Linux distribution/package guidance:
+  https://www.freedesktop.org/software/systemd/man/latest/os-release.html
+  https://ubuntu.com/server/docs/how-to/software/package-management/
+  https://manpages.debian.org/testing/apt/apt-get.8.en.html
+  https://manpages.debian.org/testing/apt/apt.8.en.html
+
+Rootless Podman guidance:
+  https://docs.podman.io/en/latest/Tutorials.html
+  https://docs.podman.io/en/stable/markdown/podman.1.html
+
+GitHub Actions/security guidance:
+  https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
+  https://docs.github.com/en/code-security/supply-chain-security/end-to-end-supply-chain/securing-accounts
+  https://docs.github.com/en/actions/security-guides/automatic-token-authentication
+  https://docs.github.com/en/actions/security-guides/using-openid-connect-with-reusable-workflows
+
+
+END OF PLAN
+===========

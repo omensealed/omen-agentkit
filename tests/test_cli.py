@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import subprocess
@@ -9,25 +10,405 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from agent_starter import __version__
 from agent_starter.cli import (
+    AI_LOCAL_IGNORE_PATTERNS,
+    ContinuationDelta,
+    GitReadiness,
+    OllamaModelAssessment,
+    PROMPT_TEMPLATES,
+    SANDBOX_FINGERPRINT_INPUTS,
+    _codex_status_summary,
+    _git_readiness,
+    _git_status_summary,
+    _github_workflow_summary,
+    _report_generation,
+    _validate_noninteractive_config,
+    _ignored_ai_artifacts_summary,
+    _looks_like_remote_rsync_target,
+    _best_ollama_assessment,
+    _coding_score,
+    _ensure_agent_authorized,
+    _find_context_length,
+    _parse_ollama_list,
+    _podman_image_id,
+    _podman_rootless_summary,
+    _prompt_interactive_choice,
+    _prompt_interactive_value,
+    _prompt_template_section,
+    _rsync_command,
+    _run_local_check,
+    _sandbox_status_lines,
+    _sha256_file,
+    _show_ollama_model,
+    _validate_rsync_target,
     _write_sandbox_preflight_stamp,
+    _xdg_runtime_summary,
     build_parser,
+    build_continuation_delta,
+    command_audit_context,
+    command_example,
+    command_audit_structure,
+    command_auth,
+    command_codex_install_skill,
+    command_codex_skill_status,
+    command_codex_uninstall_skill,
+    command_codex_update_skill,
+    command_github_ready,
+    command_launch,
+    command_generate,
+    command_new,
+    command_ollama_check,
+    command_prompt,
+    command_rsync_plan,
+    command_sandbox_clean,
+    command_sandbox_doctor,
+    command_sandbox_preflight,
+    command_status,
+    command_doctor,
+    command_toolchains,
+    command_validate,
+    collect_interactive_prompt_request,
+    collect_interactive_task_packet,
     load_answers,
+    launch_agent,
     main,
+    assess_ollama_model,
+    render_continuation_prompt,
+    render_local_model_handoff_prompt,
     sandbox_fingerprint,
+    sandbox_preflight,
     sandbox_preflight_state,
 )
+from agent_starter.cli_app import information_commands
+from agent_starter.cli_app import inspection_commands
+from agent_starter.cli_app import skill_commands
+from agent_starter.cli_app import sandbox_commands
+from agent_starter.cli_app import sandbox_orchestration
+from agent_starter.cli_app import readiness_commands
+from agent_starter.cli_app import prompt_commands
+from agent_starter.cli_app import local_model_commands
+from agent_starter.cli_app import agent_commands
+from agent_starter.cli_app import generation_commands
+from agent_starter.codex_skill import SKILL_MD
 from agent_starter.generator import generate_project
 from agent_starter.models import ProjectConfig
 
 
 class CliTests(unittest.TestCase):
+    def test_generation_command_family_preserves_exports_and_dispatch(self) -> None:
+        exports = (
+            (load_answers, generation_commands.load_answers),
+            (_validate_noninteractive_config, generation_commands._validate_noninteractive_config),
+            (_report_generation, generation_commands._report_generation),
+            (command_new, generation_commands.command_new),
+            (command_generate, generation_commands.command_generate),
+        )
+        for legacy, moved in exports:
+            self.assertIs(legacy, moved)
+
+        parser = build_parser()
+        self.assertIs(parser.parse_args(["new", "--answers", "answers.json"]).func, generation_commands.command_new)
+        self.assertIs(parser.parse_args(["init", "--answers", "answers.json"]).func, generation_commands.command_new)
+        self.assertIs(parser.parse_args(["generate", "--answers", "answers.json"]).func, generation_commands.command_generate)
+
+    def test_agent_command_family_preserves_exports_dispatch_and_auth_safety(self) -> None:
+        self.assertIs(_ensure_agent_authorized, agent_commands._ensure_agent_authorized)
+        self.assertIs(launch_agent, agent_commands.launch_agent)
+        self.assertIs(command_auth, agent_commands.command_auth)
+        self.assertIs(command_launch, agent_commands.command_launch)
+        parser = build_parser()
+        self.assertIs(parser.parse_args(["auth", "--status"]).func, agent_commands.command_auth)
+        self.assertIs(parser.parse_args(["launch"]).func, agent_commands.command_launch)
+
+        adapter = mock.Mock()
+        adapter.exists.return_value = True
+        adapter.version.return_value = "codex test"
+        adapter.auth_status.return_value = True
+        output = io.StringIO()
+        with (
+            mock.patch("agent_starter.cli_app.agent_commands.get_adapter", return_value=adapter),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(main(["auth", "--status"]), 0)
+        self.assertEqual(output.getvalue(), "Detected: codex test\nauthorized\n")
+        adapter.install.assert_not_called()
+        adapter.login.assert_not_called()
+
+        missing = mock.Mock()
+        missing.display_name = "OpenAI Codex CLI"
+        missing.install_command = "reviewed installer"
+        missing.exists.return_value = False
+        output = io.StringIO()
+        with (
+            mock.patch("agent_starter.cli_app.agent_commands.get_adapter", return_value=missing),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(main(["auth"]), 2)
+        self.assertIn("Re-run with --install only after reviewing", output.getvalue())
+        missing.install.assert_not_called()
+        missing.login.assert_not_called()
+
+    def test_local_model_command_family_preserves_exports_dispatch_and_bytes(self) -> None:
+        exports = (
+            (OllamaModelAssessment, local_model_commands.OllamaModelAssessment),
+            (_parse_ollama_list, local_model_commands._parse_ollama_list),
+            (_find_context_length, local_model_commands._find_context_length),
+            (_coding_score, local_model_commands._coding_score),
+            (_show_ollama_model, local_model_commands._show_ollama_model),
+            (assess_ollama_model, local_model_commands.assess_ollama_model),
+            (_best_ollama_assessment, local_model_commands._best_ollama_assessment),
+            (render_local_model_handoff_prompt, local_model_commands.render_local_model_handoff_prompt),
+            (command_ollama_check, local_model_commands.command_ollama_check),
+        )
+        for legacy, moved in exports:
+            self.assertIs(legacy, moved)
+        self.assertIs(build_parser().parse_args(["ollama-check"]).func, local_model_commands.command_ollama_check)
+
+        config = ProjectConfig(
+            project_name="Local Hash",
+            project_mode="existing",
+            project_stage="maintenance",
+            project_type="cli",
+            languages=["python"],
+            database="sqlite",
+            target_platforms=["linux"],
+            tests=["unit"],
+        )
+        assessment = OllamaModelAssessment(
+            "qwen2.5-coder:32b",
+            131_072,
+            4,
+            "suitable",
+            ["Confirmed context.", "Coding model."],
+        )
+        prompt = render_local_model_handoff_prompt(
+            config,
+            request="Review the import path",
+            assessment=assessment,
+            override=False,
+        )
+        self.assertEqual(
+            hashlib.sha256(prompt.encode()).hexdigest(),
+            "aa927f83d0c315c1deeacbe2d20e53a26b31641d4519d166f29379f893bb53ef",
+        )
+
+    def test_prompt_command_family_preserves_exports_dispatch_and_bytes(self) -> None:
+        exports = (
+            (ContinuationDelta, prompt_commands.ContinuationDelta),
+            (PROMPT_TEMPLATES, prompt_commands.PROMPT_TEMPLATES),
+            (_prompt_template_section, prompt_commands._prompt_template_section),
+            (render_continuation_prompt, prompt_commands.render_continuation_prompt),
+            (_prompt_interactive_value, prompt_commands._prompt_interactive_value),
+            (_prompt_interactive_choice, prompt_commands._prompt_interactive_choice),
+            (collect_interactive_task_packet, prompt_commands.collect_interactive_task_packet),
+            (build_continuation_delta, prompt_commands.build_continuation_delta),
+            (collect_interactive_prompt_request, prompt_commands.collect_interactive_prompt_request),
+            (command_prompt, prompt_commands.command_prompt),
+        )
+        for legacy, moved in exports:
+            self.assertIs(legacy, moved)
+        self.assertIs(build_parser().parse_args(["prompt"]).func, prompt_commands.command_prompt)
+
+        config = ProjectConfig(
+            project_name="Hash Prompt",
+            project_mode="existing",
+            project_stage="maintenance",
+            project_type="cli",
+            languages=["python", "javascript"],
+            database="sqlite",
+            target_platforms=["linux", "web"],
+            tests=["unit", "integration"],
+        )
+        prompt = render_continuation_prompt(
+            config,
+            request="Preserve the import contract",
+            phase="compatibility review",
+            template="bug",
+        )
+        self.assertEqual(
+            hashlib.sha256(prompt.encode()).hexdigest(),
+            "511919a06035661e670081927f40fe47f12589121b1a03cfa6726ad56f555d9c",
+        )
+        self.assertLessEqual(len(prompt.split()), 500)
+
+    def test_continuation_delta_is_complete_bounded_and_secret_safe(self) -> None:
+        config = ProjectConfig(project_name="Delta", open_questions=["Keep the legacy alias?"])
+        delta = build_continuation_delta(
+            config,
+            request="Finish the parser migration.",
+            changes="Parser ownership moved.",
+            failures="Malformed rows still fail.",
+            relevant_references=("agent_starter/parser.py", "tests/test_parser.py"),
+            acceptance_checks="Focused and full checks pass.",
+        )
+        self.assertEqual(delta.current_objective, "Finish the parser migration.")
+        self.assertEqual(delta.unresolved_decisions, ("Keep the legacy alias?",))
+        self.assertEqual(delta.relevant_references[-2:], ("agent_starter/parser.py", "tests/test_parser.py"))
+        with self.assertRaisesRegex(ValueError, "project-relative"):
+            build_continuation_delta(config, request="Continue", relevant_references=("../outside",))
+        with self.assertRaisesRegex(ValueError, "credential"):
+            build_continuation_delta(config, request="Continue", failures="password=do-not-store")
+
+    def test_readiness_command_family_preserves_direct_cli_exports_and_dispatch(self) -> None:
+        exports = (
+            (AI_LOCAL_IGNORE_PATTERNS, readiness_commands.AI_LOCAL_IGNORE_PATTERNS),
+            (GitReadiness, readiness_commands.GitReadiness),
+            (_git_status_summary, readiness_commands._git_status_summary),
+            (_git_readiness, readiness_commands._git_readiness),
+            (_ignored_ai_artifacts_summary, readiness_commands._ignored_ai_artifacts_summary),
+            (_codex_status_summary, readiness_commands._codex_status_summary),
+            (_podman_rootless_summary, readiness_commands._podman_rootless_summary),
+            (_xdg_runtime_summary, readiness_commands._xdg_runtime_summary),
+            (_sandbox_status_lines, readiness_commands._sandbox_status_lines),
+            (_github_workflow_summary, readiness_commands._github_workflow_summary),
+            (_run_local_check, readiness_commands._run_local_check),
+            (_looks_like_remote_rsync_target, readiness_commands._looks_like_remote_rsync_target),
+            (_validate_rsync_target, readiness_commands._validate_rsync_target),
+            (_rsync_command, readiness_commands._rsync_command),
+            (command_status, readiness_commands.command_status),
+            (command_github_ready, readiness_commands.command_github_ready),
+            (command_rsync_plan, readiness_commands.command_rsync_plan),
+        )
+        for legacy, moved in exports:
+            self.assertIs(legacy, moved)
+        parser = build_parser()
+        self.assertIs(parser.parse_args(["status"]).func, readiness_commands.command_status)
+        self.assertIs(parser.parse_args(["github-ready"]).func, readiness_commands.command_github_ready)
+        self.assertIs(
+            parser.parse_args(["rsync-plan", ".", "../mirror"]).func,
+            readiness_commands.command_rsync_plan,
+        )
+
+    def test_sandbox_orchestration_preserves_direct_cli_exports(self) -> None:
+        exports = (
+            (SANDBOX_FINGERPRINT_INPUTS, sandbox_orchestration.SANDBOX_FINGERPRINT_INPUTS),
+            (_sha256_file, sandbox_orchestration._sha256_file),
+            (sandbox_fingerprint, sandbox_orchestration.sandbox_fingerprint),
+            (_podman_image_id, sandbox_orchestration._podman_image_id),
+            (_write_sandbox_preflight_stamp, sandbox_orchestration._write_sandbox_preflight_stamp),
+            (sandbox_preflight_state, sandbox_orchestration.sandbox_preflight_state),
+            (sandbox_preflight, sandbox_orchestration.sandbox_preflight),
+        )
+        for legacy, moved in exports:
+            self.assertIs(legacy, moved)
+
+    def test_sandbox_command_family_preserves_direct_dispatch(self) -> None:
+        commands = {
+            "doctor": (command_sandbox_doctor, sandbox_commands.command_sandbox_doctor),
+            "preflight": (command_sandbox_preflight, sandbox_commands.command_sandbox_preflight),
+            "clean": (command_sandbox_clean, sandbox_commands.command_sandbox_clean),
+        }
+        parser = build_parser()
+        for command, (legacy, moved) in commands.items():
+            self.assertIs(legacy, moved)
+            self.assertIs(parser.parse_args(["sandbox", command]).func, moved)
+
+    def test_skill_command_family_preserves_dispatch_confirmation_and_safety(self) -> None:
+        commands = {
+            "skill-status": (command_codex_skill_status, skill_commands.command_codex_skill_status),
+            "install-agentkit-skill": (command_codex_install_skill, skill_commands.command_codex_install_skill),
+            "update-agentkit-skill": (command_codex_update_skill, skill_commands.command_codex_update_skill),
+            "uninstall-agentkit-skill": (command_codex_uninstall_skill, skill_commands.command_codex_uninstall_skill),
+        }
+        parser = build_parser()
+        for command, (legacy, moved) in commands.items():
+            self.assertIs(legacy, moved)
+            self.assertIs(parser.parse_args(["codex", command]).func, moved)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["codex", "skill-status", str(root)]), 0)
+            self.assertIn("Installed: no", stdout.getvalue())
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["codex", "install-agentkit-skill", str(root), "--yes"]), 0)
+            skill_path = root / SKILL_MD
+            before = skill_path.read_bytes()
+            stdout = io.StringIO()
+            with mock.patch("builtins.input", return_value="n"), contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["codex", "update-agentkit-skill", str(root)]), 2)
+            self.assertIn("No changes made.", stdout.getvalue())
+            self.assertEqual(skill_path.read_bytes(), before)
+
+            custom = Path(temp) / "custom"
+            custom_skill = custom / SKILL_MD
+            custom_skill.parent.mkdir(parents=True)
+            custom_skill.write_text("custom\n", encoding="utf-8")
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["codex", "uninstall-agentkit-skill", str(custom)]), 2)
+            self.assertIn("refusing to delete user-owned content", stdout.getvalue())
+            self.assertEqual(custom_skill.read_text(encoding="utf-8"), "custom\n")
+
+    def test_inspection_command_family_preserves_direct_dispatch_and_invalid_exit(self) -> None:
+        expected = {
+            "validate": (command_validate, inspection_commands.command_validate),
+            "audit-structure": (command_audit_structure, inspection_commands.command_audit_structure),
+            "audit-context": (command_audit_context, inspection_commands.command_audit_context),
+            "doctor": (command_doctor, inspection_commands.command_doctor),
+        }
+        parser = build_parser()
+        for command, (legacy, moved) in expected.items():
+            self.assertIs(legacy, moved)
+            self.assertIs(parser.parse_args([command]).func, moved)
+        with tempfile.TemporaryDirectory() as temp:
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(["validate", temp])
+            self.assertEqual(code, 2)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertIn("[error] Missing required file: .agent-starter/project.json", stdout.getvalue())
+
+    def test_information_command_family_preserves_dispatch_exit_and_streams(self) -> None:
+        self.assertIs(command_example, information_commands.command_example)
+        self.assertIs(command_toolchains, information_commands.command_toolchains)
+        parser = build_parser()
+        self.assertIs(parser.parse_args(["example-answers"]).func, information_commands.command_example)
+        self.assertIs(parser.parse_args(["toolchains"]).func, information_commands.command_toolchains)
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(["toolchains"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(
+            hashlib.sha256(stdout.getvalue().encode()).hexdigest(),
+            "d3f85b3d200cd868157add3a1ffe91f41d8c5bb1b82a1bdf15b10d12a9e37c3d",
+        )
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = main(["example-answers"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        example = json.loads(stdout.getvalue())
+        self.assertEqual(example["schema_version"], 2)
+        self.assertEqual(example["primary_agent"], "codex")
+        self.assertEqual(example["model_policy"]["model_id"], "gpt-5.6-sol")
+
+        with tempfile.TemporaryDirectory() as temp:
+            existing = Path(temp) / "answers.json"
+            existing.write_text("preserve me\n", encoding="utf-8")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                code = main(["example-answers", "--output", str(existing)])
+            self.assertEqual(code, 2)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertEqual(stdout.getvalue(), f"Refusing to replace {existing}; add --force.\n")
+            self.assertEqual(existing.read_text(encoding="utf-8"), "preserve me\n")
+
     def test_version_and_toolchains(self) -> None:
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             main(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("0.4.8", output.getvalue())
+        self.assertIn(__version__, output.getvalue())
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
@@ -44,6 +425,80 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main(["example-answers", "--output", str(answers)]), 0)
             data = json.loads(answers.read_text())
             self.assertEqual(data["primary_agent"], "codex")
+            self.assertEqual(data["schema_version"], 2)
+            self.assertEqual(data["model_policy"]["model_id"], "gpt-5.6-sol")
+
+    def test_new_command_exposes_guided_and_advanced_modes_without_changing_answers_flow(self) -> None:
+        guided = build_parser().parse_args(["new", "--mode", "guided"])
+        advanced = build_parser().parse_args(["init", "--mode", "advanced"])
+        answers = build_parser().parse_args(["new", "--answers", "answers.json"])
+        self.assertEqual(guided.entry_mode, "guided")
+        self.assertEqual(advanced.entry_mode, "advanced")
+        self.assertEqual(answers.entry_mode, "advanced")
+        with mock.patch(
+            "agent_starter.cli_app.generation_commands.run_wizard",
+            side_effect=RuntimeError("stop after wiring"),
+        ) as wizard:
+            with self.assertRaisesRegex(RuntimeError, "stop after wiring"):
+                main(["new", "--mode", "guided", "--skip-agent-setup"])
+        wizard.assert_called_once_with(
+            initial_path=None,
+            skip_agent_setup=True,
+            entry_mode="guided",
+        )
+
+    def test_doctor_accepts_only_reviewed_platform_provider_overrides(self) -> None:
+        args = build_parser().parse_args(["doctor", "--platform-provider", "ubuntu"])
+        self.assertEqual(args.platform_provider, "ubuntu")
+        self.assertFalse(args.json)
+        json_args = build_parser().parse_args(["doctor", "--json"])
+        self.assertTrue(json_args.json)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            build_parser().parse_args(["doctor", "--platform-provider", "fedora"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_doctor_json_is_redacted_and_provider_appropriate(self) -> None:
+        from agent_starter.platforms import CommandResult, DebianFamilyProvider, detect_platform
+
+        available = {"apt-get", "bash", "git", "curl"}
+        lookup = lambda name: f"/synthetic/{name}" if name in available else None
+        detection = detect_platform(
+            'ID=ubuntu\nID_LIKE=debian\nPRETTY_NAME="Ubuntu"\n',
+            architecture="x86_64",
+            executable_lookup=lookup,
+        )
+        provider = DebianFamilyProvider(
+            "ubuntu", runner=lambda argv: CommandResult(0, "install ok installed")
+        )
+        adapter = mock.Mock()
+        adapter.exists.return_value = True
+        adapter.version.return_value = "codex test"
+        adapter.auth_status.return_value = True
+        output = io.StringIO()
+        with (
+            mock.patch("agent_starter.cli_app.inspection_commands.detect_host", return_value=detection),
+            mock.patch("agent_starter.cli_app.inspection_commands.provider_for_detection", return_value=provider),
+            mock.patch("agent_starter.cli_app.inspection_commands.get_adapter", return_value=adapter),
+            mock.patch("agent_starter.cli_app.inspection_commands.shutil.which", side_effect=lookup),
+            contextlib.redirect_stdout(output),
+        ):
+            code = main(["doctor", "--json"])
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["provider"]["id"], "ubuntu")
+        encoded = json.dumps(payload)
+        self.assertIn("apt-get", encoded)
+        self.assertNotIn("pacman", encoded)
+        self.assertNotIn("/synthetic", encoded)
+
+    def test_public_entry_point_and_config_command_remain_importable(self) -> None:
+        from agent_starter.cli_app.config_command import command_config_migrate
+
+        self.assertTrue(callable(main))
+        self.assertTrue(callable(build_parser))
+        self.assertTrue(callable(command_config_migrate))
+        args = build_parser().parse_args(["config", "migrate", "--input", "answers.json"])
+        self.assertIs(args.func, command_config_migrate)
 
     def test_example_answers_then_generate(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -59,8 +514,9 @@ class CliTests(unittest.TestCase):
             with contextlib.redirect_stdout(output):
                 self.assertEqual(main(["generate", "--answers", str(answers)]), 0)
             self.assertTrue((root / "AGENTS.md").is_file())
+            self.assertTrue((root / "START_HERE.md").is_file())
             self.assertTrue((root / "NEXT_STEPS.md").is_file())
-            self.assertIn("NEXT_STEPS.md", output.getvalue())
+            self.assertIn("START_HERE.md", output.getvalue())
 
     def test_custom_commands_require_explicit_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -152,8 +608,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("agent_starter.cli._run_project_command_logged", side_effect=fake_run),
-                mock.patch("agent_starter.cli._podman_image_id", return_value="sha256:test"),
+                mock.patch("agent_starter.cli_app.sandbox_orchestration._run_project_command_logged", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.sandbox_orchestration._podman_image_id", return_value="sha256:test"),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["sandbox", "preflight", str(root)])
@@ -182,7 +638,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(state, "missing")
             self.assertIn("missing", reason)
 
-            with mock.patch("agent_starter.cli._podman_image_id", return_value="sha256:test"):
+            with mock.patch("agent_starter.cli_app.sandbox_orchestration._podman_image_id", return_value="sha256:test"):
                 _write_sandbox_preflight_stamp(
                     root,
                     config,
@@ -267,13 +723,35 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("agent_starter.cli.sandbox_preflight", return_value=2) as preflight,
-                mock.patch("agent_starter.cli.get_adapter") as get_adapter,
+                mock.patch("agent_starter.cli_app.agent_commands.sandbox_preflight", return_value=2) as preflight,
+                mock.patch("agent_starter.cli_app.agent_commands.get_adapter") as get_adapter,
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["launch", str(root), "--kickoff"])
             self.assertEqual(code, 2)
             preflight.assert_called_once()
+            get_adapter.assert_not_called()
+
+    def test_launch_validation_errors_block_preflight_and_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            config = ProjectConfig(project_name="Blocked Launch", project_path=str(root), git_enabled=False)
+            config.sandbox.enabled = True
+            config.sandbox.mode = "toolchain"
+            self.assertTrue(generate_project(config).ok)
+            (root / "AGENTS.md").unlink()
+
+            output = io.StringIO()
+            with (
+                mock.patch("agent_starter.cli_app.agent_commands.sandbox_preflight") as preflight,
+                mock.patch("agent_starter.cli_app.agent_commands.get_adapter") as get_adapter,
+                contextlib.redirect_stdout(output),
+            ):
+                code = main(["launch", str(root)])
+            self.assertEqual(code, 2)
+            self.assertIn("Launch blocked by project validation", output.getvalue())
+            self.assertIn("Missing required file: AGENTS.md", output.getvalue())
+            preflight.assert_not_called()
             get_adapter.assert_not_called()
 
     def test_codex_inside_container_kickoff_uses_sandbox_codex_exec(self) -> None:
@@ -296,9 +774,9 @@ class CliTests(unittest.TestCase):
             adapter = mock.Mock()
             output = io.StringIO()
             with (
-                mock.patch("agent_starter.cli.sandbox_preflight", return_value=0),
-                mock.patch("agent_starter.cli.get_adapter", return_value=adapter),
-                mock.patch("agent_starter.cli._run_project_command", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.agent_commands.sandbox_preflight", return_value=0),
+                mock.patch("agent_starter.cli_app.agent_commands.get_adapter", return_value=adapter),
+                mock.patch("agent_starter.cli_app.agent_commands._run_project_command", side_effect=fake_run),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["launch", str(root), "--kickoff"])
@@ -341,14 +819,34 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                code = main(["prompt", str(root), "--request", "Add an import command"])
+                code = main([
+                    "prompt", str(root),
+                    "--request", "Add an import command",
+                    "--changes", "CSV parsing was characterized.",
+                    "--failures", "Invalid rows still crash.",
+                    "--relevant-reference", "agent_starter/imports.py",
+                    "--relevant-reference", "tests/test_imports.py",
+                    "--acceptance", "The regression and full checks pass.",
+                    "--unresolved-decision", "Keep partial imports atomic?",
+                ])
             text = output.getvalue()
             self.assertEqual(code, 0)
             self.assertIn("User request", text)
             self.assertIn("Add an import command", text)
+            self.assertLess(text.index("docs/AGENT-INDEX.md"), text.index("AGENTS.md"))
             self.assertIn("Read `AGENTS.md` completely", text)
-            self.assertIn("Do not run `sudo`", text)
+            self.assertIn("only the task-relevant files", text)
+            self.assertIn("## Canonical policy references", text)
+            self.assertIn("AGENTS.md#canonical-policy-registry", text)
+            self.assertNotIn("Do not run `sudo`", text)
             self.assertIn("docs/11-IMPLEMENTATION-NOTES.md", text)
+            self.assertIn("## Continuation delta", text)
+            self.assertIn("Changes since last handoff: CSV parsing was characterized.", text)
+            self.assertIn("Current failures: Invalid rows still crash.", text)
+            self.assertIn("`agent_starter/imports.py`", text)
+            self.assertIn("Acceptance checks: The regression and full checks pass.", text)
+            self.assertIn("Keep partial imports atomic?", text)
+            self.assertIn("Do not reread every historical implementation-note entry", text)
 
     def test_prompt_command_supports_named_templates(self) -> None:
         expected = {
@@ -393,12 +891,12 @@ class CliTests(unittest.TestCase):
             answers = iter(
                 [
                     "2",
-                    "Fix the CSV import crash",
-                    "A failing sample was added",
-                    "import command and tests",
-                    "High; preserve existing files",
-                    "Run import tests and ./scripts/check.sh",
-                    "bugfix phase",
+                    "Import a CSV containing an invalid row",
+                    "The import command crashes",
+                    "It should report the invalid row and preserve existing files",
+                    "ValueError: invalid row",
+                    "consistent",
+                    "approve",
                 ]
             )
 
@@ -408,11 +906,29 @@ class CliTests(unittest.TestCase):
             text = output.getvalue()
             self.assertEqual(code, 0)
             self.assertIn("Guided Codex continuation prompt", text)
-            self.assertIn("Task type: Bug fix", text)
+            self.assertIn("Task type: Fix a problem", text)
             self.assertIn("Bug Fix Template", text)
-            self.assertIn("Fix the CSV import crash", text)
-            self.assertIn("Risk level and concerns: High; preserve existing files", text)
-            self.assertIn("Current phase focus: bugfix phase", text)
+            self.assertIn("The import command crashes", text)
+            self.assertIn("preserve existing files", text)
+            self.assertIn("What Codex will attempt", text)
+            self.assertIn("What it must not change", text)
+            self.assertIn("Approve prompt", text)
+            self.assertIn("Current phase focus: fix continuation", text)
+
+    def test_cli_and_gui_task_composers_produce_equivalent_packets(self) -> None:
+        from agent_starter.gui.bridge import GuiBridge
+
+        answers = {
+            "current": "The command replaces the report.",
+            "desired": "The command should merge the report.",
+            "compatibility": "Existing flags and report files must remain compatible.",
+        }
+        cli_answers = iter(["3", *answers.values()])
+        with mock.patch("builtins.input", side_effect=lambda _prompt: next(cli_answers)), contextlib.redirect_stdout(io.StringIO()):
+            cli_packet = collect_interactive_task_packet()
+        gui_result = GuiBridge().compose_task({"kind": "change", "answers": answers})
+        self.assertTrue(gui_result["ok"], gui_result)
+        self.assertEqual(cli_packet.to_dict(), gui_result["packet"])
 
     def test_prompt_command_interactive_rejects_secret_like_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -424,11 +940,10 @@ class CliTests(unittest.TestCase):
                     "feature",
                     "password=bad",
                     "Add a safe import view",
+                    "A person imports one sample CSV",
                     "",
-                    "",
-                    "",
-                    "",
-                    "",
+                    "A focused import test passes",
+                    "approve",
                 ]
             )
 
@@ -440,6 +955,30 @@ class CliTests(unittest.TestCase):
             self.assertIn("resembles a credential", text)
             self.assertIn("Add a safe import view", text)
             self.assertNotIn("password=bad", text)
+
+    def test_interactive_contract_can_be_edited_before_approval(self) -> None:
+        answers = iter([
+            "feature",
+            "Export every report.",
+            "Export all findings.",
+            "Preserve existing CLI flags.",
+            "The export test passes.",
+            "edit",
+            "feature",
+            "Export a filtered report.",
+            "Export unresolved findings only.",
+            "Preserve existing CLI flags.",
+            "Focused export and trusted checks pass.",
+            "approve",
+        ])
+        output = io.StringIO()
+        with mock.patch("builtins.input", side_effect=lambda _prompt: next(answers)), contextlib.redirect_stdout(output):
+            request, phase, template = collect_interactive_prompt_request()
+        self.assertIn("Export a filtered report", request)
+        self.assertNotIn("Export every report", request)
+        self.assertEqual(phase, "feature continuation")
+        self.assertEqual(template, "feature")
+        self.assertEqual(output.getvalue().count("Task contract — review required"), 2)
 
     def test_status_command_reports_workspace_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -464,7 +1003,7 @@ class CliTests(unittest.TestCase):
             adapter.auth_status.return_value = True
 
             output = io.StringIO()
-            with mock.patch("agent_starter.cli.get_adapter", return_value=adapter), contextlib.redirect_stdout(output):
+            with mock.patch("agent_starter.cli_app.readiness_commands.get_adapter", return_value=adapter), contextlib.redirect_stdout(output):
                 code = main(["status", str(root)])
             text = output.getvalue()
             self.assertEqual(code, 0)
@@ -489,8 +1028,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("agent_starter.cli.get_adapter", return_value=adapter),
-                mock.patch("agent_starter.cli.shutil.which", return_value=None),
+                mock.patch("agent_starter.cli_app.readiness_commands.get_adapter", return_value=adapter),
+                mock.patch("agent_starter.cli_app.readiness_commands.shutil.which", return_value=None),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["status", str(root)])
@@ -608,8 +1147,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("shutil.which", return_value="/usr/bin/rsync"),
-                mock.patch("subprocess.run", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.readiness_commands.shutil.which", return_value="/usr/bin/rsync"),
+                mock.patch("agent_starter.cli_app.readiness_commands.subprocess.run", side_effect=fake_run),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["rsync-plan", str(root), str(target), "--delete", "--run"])
@@ -660,8 +1199,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("shutil.which", return_value="/usr/bin/ollama"),
-                mock.patch("subprocess.run", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.local_model_commands.shutil.which", return_value="/usr/bin/ollama"),
+                mock.patch("agent_starter.cli_app.local_model_commands.subprocess.run", side_effect=fake_run),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["ollama-check", str(root), "--request", "Continue the import feature"])
@@ -686,8 +1225,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("shutil.which", return_value="/usr/bin/ollama"),
-                mock.patch("subprocess.run", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.local_model_commands.shutil.which", return_value="/usr/bin/ollama"),
+                mock.patch("agent_starter.cli_app.local_model_commands.subprocess.run", side_effect=fake_run),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["ollama-check", str(root), "--model", "llama3.2:3b"])
@@ -712,8 +1251,8 @@ class CliTests(unittest.TestCase):
 
             output = io.StringIO()
             with (
-                mock.patch("shutil.which", return_value="/usr/bin/ollama"),
-                mock.patch("subprocess.run", side_effect=fake_run),
+                mock.patch("agent_starter.cli_app.local_model_commands.shutil.which", return_value="/usr/bin/ollama"),
+                mock.patch("agent_starter.cli_app.local_model_commands.subprocess.run", side_effect=fake_run),
                 contextlib.redirect_stdout(output),
             ):
                 code = main(["ollama-check", str(root), "--model", "llama3.2:3b", "--override"])

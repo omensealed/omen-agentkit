@@ -14,6 +14,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
   test:
     strategy:
       fail-fast: false
@@ -23,10 +33,63 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Run checks
         run: ./scripts/check.sh
+
+  provider-container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Preload official provider images
+        run: |
+          docker pull docker.io/library/debian@sha256:4cc40147060d766a649b100b175ac0a346a5b5c8fbcc5677c2f471854ee4e55c
+          docker pull docker.io/library/archlinux@sha256:d5ae80f3489764be5c8e27fe19b7ebfe876b35d7b42aaa5ab99aff2bf7438c34
+      - name: Run focused network-off provider and generation smoke
+        env:
+          AGENTKIT_RUN_CONTAINER_MATRIX: '1'
+          AGENTKIT_CONTAINER_RUNTIME: docker
+        run: python3 -m unittest tests.test_provider_matrix.PreloadedContainerMatrixTests -v
+
+  supply-chain-artifacts:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.11'
+      - name: Build wheel and source distribution
+        run: python3 -m build --no-isolation --outdir "$RUNNER_TEMP/release" .
+      - name: Create checksums and SPDX SBOM
+        run: python3 -m agent_starter.release_artifacts "$RUNNER_TEMP/release"
+      - name: Upload reviewed build evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: omen-agentkit-supply-chain-${{ github.sha }}
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Attest GitHub-hosted build subjects
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: ${{ runner.temp }}/release/SHA256SUMS

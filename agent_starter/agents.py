@@ -16,7 +16,48 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from .models import AdvisorRecommendation, ProjectConfig
+from .capabilities import CAPABILITY_CATALOG
+
+from .models import AdvisorCapability, AdvisorRecommendation, ProjectConfig
+from .toolchains import TOOLCHAINS
+
+
+ADVISOR_LANGUAGES = tuple(toolchain.key for toolchain in TOOLCHAINS)
+ADVISOR_DATABASES = ("none", "sqlite", "mariadb", "postgresql", "existing", "undecided")
+ADVISOR_REQUIREMENTS = ("required", "optional")
+ADVISOR_CONFIDENCE = ("high", "medium", "low")
+
+_ADVISOR_PROSE_POLICIES = (
+    (
+        "credential request",
+        re.compile(
+            r"(?is)\b(?:paste|reveal|share|upload|send|print|read)\b.{0,100}"
+            r"\b(?:password|api[ _-]?key|oauth[ _-]?token|access[ _-]?token|cookie|private[ _-]?key|secret)\b"
+        ),
+    ),
+    (
+        "prompt-injection content",
+        re.compile(
+            r"(?is)\b(?:ignore|disregard|override)\b.{0,100}"
+            r"\b(?:previous|prior|system|developer)\b.{0,60}\b(?:instruction|instructions|prompt)\b"
+        ),
+    ),
+    (
+        "download-pipe command content",
+        re.compile(r"(?is)\b(?:curl|wget)\b[^\n]{0,500}\|\s*(?:sh|bash|zsh|python|python3)\b"),
+    ),
+    (
+        "privileged or destructive command content",
+        re.compile(
+            r"(?is)(?:\bsudo\b|\brm\s+-[a-z]*[rf][a-z]*\s+|\bmkfs(?:\.[a-z0-9]+)?\b|"
+            r"\bdd\s+if=|\b(?:shutdown|reboot|poweroff)\b)"
+        ),
+    ),
+    (
+        "shell command syntax",
+        re.compile(r"(?s)(?:\$\(|`|&&|\|\||(?:^|\s)[<>|](?:\s|$)|;\s*(?:sh|bash|sudo|rm|curl|wget)\b)"),
+    ),
+)
 
 
 class AgentError(RuntimeError):
@@ -123,7 +164,25 @@ def extract_json(text: str) -> dict[str, Any]:
 
 
 def advisor_schema() -> dict[str, Any]:
-    list_of_strings = {"type": "array", "items": {"type": "string"}}
+    def string_list(*, item_limit: int, count_limit: int) -> dict[str, Any]:
+        return {
+            "type": "array",
+            "maxItems": count_limit,
+            "items": {"type": "string", "minLength": 1, "maxLength": item_limit},
+        }
+
+    capability = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["capability_id", "purpose", "requirement", "rationale", "confidence"],
+        "properties": {
+            "capability_id": {"type": "string", "enum": list(CAPABILITY_CATALOG)},
+            "purpose": {"type": "string", "minLength": 1, "maxLength": 500},
+            "requirement": {"type": "string", "enum": list(ADVISOR_REQUIREMENTS)},
+            "rationale": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "confidence": {"type": "string", "enum": list(ADVISOR_CONFIDENCE)},
+        },
+    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -132,31 +191,138 @@ def advisor_schema() -> dict[str, Any]:
             "summary",
             "languages",
             "database",
-            "architecture",
-            "toolchain_packages",
-            "setup_commands",
-            "build_commands",
-            "test_commands",
-            "lint_commands",
-            "rationale",
+            "recommended_capabilities",
+            "architecture_notes",
             "risks",
             "questions",
         ],
         "properties": {
-            "summary": {"type": "string"},
-            "languages": list_of_strings,
-            "database": {"type": "string"},
-            "architecture": {"type": "string"},
-            "toolchain_packages": list_of_strings,
-            "setup_commands": list_of_strings,
-            "build_commands": list_of_strings,
-            "test_commands": list_of_strings,
-            "lint_commands": list_of_strings,
-            "rationale": list_of_strings,
-            "risks": list_of_strings,
-            "questions": list_of_strings,
+            "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+            "languages": {
+                "type": "array",
+                "maxItems": 10,
+                "uniqueItems": True,
+                "items": {"type": "string", "enum": list(ADVISOR_LANGUAGES)},
+            },
+            "database": {"type": "string", "enum": list(ADVISOR_DATABASES)},
+            "recommended_capabilities": {"type": "array", "maxItems": 30, "items": capability},
+            "architecture_notes": string_list(item_limit=2000, count_limit=20),
+            "risks": string_list(item_limit=2000, count_limit=20),
+            "questions": string_list(item_limit=2000, count_limit=20),
         },
     }
+
+
+def parse_advisor_response(
+    data: dict[str, Any],
+    *,
+    source: str = "codex",
+    raw_output: str = "",
+) -> AdvisorRecommendation:
+    """Strictly validate untrusted capability-first advisor JSON."""
+
+    if not isinstance(data, dict):
+        raise AgentError("Advisor response must be one JSON object.")
+    required = set(advisor_schema()["required"])
+    actual = set(data)
+    unexpected = sorted(actual - required)
+    missing = sorted(required - actual)
+    if unexpected:
+        raise AgentError(f"Advisor response has unexpected fields: {', '.join(unexpected)}.")
+    if missing:
+        raise AgentError(f"Advisor response is missing required fields: {', '.join(missing)}.")
+
+    def text(value: Any, path: str, *, limit: int, allow_empty: bool = False) -> str:
+        if not isinstance(value, str):
+            raise AgentError(f"Advisor field {path} must be text.")
+        if "\x00" in value or any(ord(character) < 32 and character not in "\n\t" for character in value):
+            raise AgentError(f"Advisor field {path} contains unsupported control content.")
+        cleaned = value.strip()
+        if not allow_empty and not cleaned:
+            raise AgentError(f"Advisor field {path} must not be empty.")
+        if len(cleaned) > limit:
+            raise AgentError(f"Advisor field {path} exceeds {limit} characters.")
+        for policy_name, pattern in _ADVISOR_PROSE_POLICIES:
+            if pattern.search(cleaned):
+                raise AgentError(
+                    f"Advisor field {path} contains prohibited {policy_name}; "
+                    "discard this response and use a reviewed retry or deterministic fallback."
+                )
+        return cleaned
+
+    def text_list(value: Any, path: str, *, count: int, item_limit: int) -> list[str]:
+        if not isinstance(value, list):
+            raise AgentError(f"Advisor field {path} must be a JSON list.")
+        if len(value) > count:
+            raise AgentError(f"Advisor field {path} exceeds {count} items.")
+        return [text(item, f"{path}[{index}]", limit=item_limit) for index, item in enumerate(value)]
+
+    summary = text(data["summary"], "summary", limit=2000)
+    languages = text_list(data["languages"], "languages", count=10, item_limit=80)
+    if len(set(languages)) != len(languages):
+        raise AgentError("Advisor field languages must not contain duplicates.")
+    for index, language in enumerate(languages):
+        if language not in ADVISOR_LANGUAGES:
+            raise AgentError(f"Advisor field languages[{index}] is unsupported.")
+    database = text(data["database"], "database", limit=80)
+    if database not in ADVISOR_DATABASES:
+        raise AgentError("Advisor field database is unsupported.")
+
+    raw_capabilities = data["recommended_capabilities"]
+    if not isinstance(raw_capabilities, list):
+        raise AgentError("Advisor field recommended_capabilities must be a JSON list.")
+    if len(raw_capabilities) > 30:
+        raise AgentError("Advisor field recommended_capabilities exceeds 30 items.")
+    recommended: list[AdvisorCapability] = []
+    seen: set[str] = set()
+    capability_fields = {"capability_id", "purpose", "requirement", "rationale", "confidence"}
+    for index, item in enumerate(raw_capabilities):
+        path = f"recommended_capabilities[{index}]"
+        if not isinstance(item, dict):
+            raise AgentError(f"Advisor field {path} must be an object.")
+        extra = sorted(set(item) - capability_fields)
+        absent = sorted(capability_fields - set(item))
+        if extra:
+            raise AgentError(f"Advisor field {path} has unexpected fields: {', '.join(extra)}.")
+        if absent:
+            raise AgentError(f"Advisor field {path} is missing fields: {', '.join(absent)}.")
+        capability_id = text(item["capability_id"], f"{path}.capability_id", limit=80)
+        if capability_id not in CAPABILITY_CATALOG:
+            raise AgentError(f"Advisor field {path}.capability_id is unknown.")
+        if capability_id in seen:
+            raise AgentError(f"Advisor field {path}.capability_id is duplicated.")
+        seen.add(capability_id)
+        requirement = text(item["requirement"], f"{path}.requirement", limit=20)
+        if requirement not in ADVISOR_REQUIREMENTS:
+            raise AgentError(f"Advisor field {path}.requirement must be required or optional.")
+        confidence = text(item["confidence"], f"{path}.confidence", limit=20)
+        if confidence not in ADVISOR_CONFIDENCE:
+            raise AgentError(f"Advisor field {path}.confidence must be high, medium, or low.")
+        recommended.append(AdvisorCapability(
+            capability_id,
+            text(item["purpose"], f"{path}.purpose", limit=500),
+            requirement,
+            text(item["rationale"], f"{path}.rationale", limit=2000),
+            confidence,
+        ))
+
+    architecture_notes = text_list(data["architecture_notes"], "architecture_notes", count=20, item_limit=2000)
+    risks = text_list(data["risks"], "risks", count=20, item_limit=2000)
+    questions = text_list(data["questions"], "questions", count=20, item_limit=2000)
+    return AdvisorRecommendation(
+        summary=summary,
+        languages=languages,
+        database=database,
+        architecture="\n".join(architecture_notes),
+        recommended_capabilities=recommended,
+        architecture_notes=architecture_notes,
+        toolchain_capabilities=[item.capability_id for item in recommended],
+        rationale=[item.rationale for item in recommended],
+        risks=risks,
+        questions=questions,
+        source=source,
+        raw_output=raw_output[:100_000],
+    )
 
 
 class CodexAdapter(AgentAdapter):
@@ -218,7 +384,7 @@ class CodexAdapter(AgentAdapter):
                 detail = (result.stderr or result.stdout).strip()
                 raise AgentError(f"Codex stack advice failed: {detail[:500]}")
             data = extract_json(raw)
-            return AdvisorRecommendation.from_dict(data, source="codex", raw_output=raw)
+            return parse_advisor_response(data, source="codex", raw_output=raw)
 
     def launch_interactive(self, root: Path, prompt: str) -> int:
         command = [self.command, "--cd", str(root), prompt]

@@ -1,0 +1,87 @@
+name: 0.5.0 migration burn-in report
+description: Manually report a redacted migration, provider, packaging, or safety regression; no telemetry is collected.
+title: "[0.5.0 burn-in] "
+labels:
+  - burn-in
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is user-submitted. AgentKit performs no telemetry or automatic upload.
+        Do not include credentials, OAuth tokens, API keys, cookies, session data, SSH material, private URLs, secret values, usernames, home paths, or proprietary content.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Schema migration or configuration
+        - Host/provider detection or package plan
+        - Source, wheel, sdist, install, or uninstall
+        - Existing-project conflict, proposal, backup, or path safety
+        - Recommendation, prompt, CLI, or GUI
+        - Sandbox or local deployment evidence
+        - Documentation
+    validations:
+      required: true
+  - type: dropdown
+    id: host_family
+    attributes:
+      label: Host family
+      options:
+        - CachyOS
+        - Arch Linux
+        - Debian
+        - Ubuntu
+        - Unsupported or other Linux
+        - Not host-specific
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Redacted version information
+      description: AgentKit and Python versions only; do not paste an environment dump or identifying paths.
+      placeholder: "AgentKit 0.5.0; Python 3.11"
+    validations:
+      required: true
+  - type: dropdown
+    id: project_mode
+    attributes:
+      label: Project mode
+      options:
+        - Fresh project
+        - Existing-project renovation
+        - Configuration migration only
+        - Installation or packaging only
+        - Other or not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal redacted reproduction
+      description: Use synthetic names and review every command before submitting it. Do not paste downloaded, AI-produced, issue-body, or secret-bearing commands.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and safe issue codes
+      description: Paste only bounded, redacted output. Do not attach credentials, cookies, full environment dumps, or private project content.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety_confirmation
+    attributes:
+      label: Submission safety
+      options:
+        - label: I removed credentials, OAuth tokens, API keys, cookies, secret values, identifying paths, and private project content.
+          required: true
+        - label: I reviewed every pasted command and log line and understand that submitting this form does not authorize execution, installation, push, publication, or deployment.
+          required: true

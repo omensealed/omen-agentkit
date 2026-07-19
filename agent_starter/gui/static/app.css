@@ -8,10 +8,15 @@
   --accent: #126b5c;
   --accent-strong: #0a4e43;
   --danger: #9b2c2c;
+  --focus: #f0a202;
 }
 
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 body {
@@ -19,6 +24,28 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 16px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: 8px;
+  z-index: 10;
+  transform: translateY(-160%);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 10px 14px;
+  font-weight: 700;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
 }
 
 button,
@@ -54,12 +81,34 @@ textarea {
 .steps li {
   border-left: 3px solid transparent;
   color: #c7d0dc;
-  padding: 7px 0 7px 12px;
+  padding-left: 6px;
 }
 
 .steps li.active {
   border-color: #6fd0bd;
   color: #ffffff;
+  font-weight: 700;
+}
+
+.step-button {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  min-height: 0;
+  padding: 7px 6px;
+  text-align: left;
+}
+
+.step-button:hover {
+  background: #334252;
+}
+
+.step-state {
+  display: block;
+  color: #9ce3d5;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -164,6 +213,51 @@ pre {
   padding: 14px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.diagnostic {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+
+.diagnostic h3,
+.diagnostic p {
+  margin-top: 0;
+}
+
+.diagnostic details pre {
+  margin-top: 0.5rem;
+}
+
+.remediation {
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+}
+
+.remediation h3,
+.remediation p {
+  margin-top: 0;
+}
+
+.remediation pre {
+  min-height: 0;
+  max-height: 180px;
+}
+
+.draft-controls {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.draft-controls button {
+  margin: 0 0.35rem 0.5rem 0;
 }
 
 .error {

@@ -1,0 +1,5 @@
+NAME="Fedora Linux"
+PRETTY_NAME="Fedora Linux 42"
+ID=fedora
+VERSION_ID="42"
+ID_LIKE="rhel centos"

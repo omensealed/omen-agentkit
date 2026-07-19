@@ -6,6 +6,16 @@ from dataclasses import dataclass
 import textwrap
 from typing import Iterable
 
+from .capabilities import (
+    BASE_CAPABILITY_IDS,
+    DATABASE_CAPABILITY_IDS,
+    LANGUAGE_CAPABILITY_IDS,
+    OPTIONAL_CAPABILITY_IDS,
+    select_capabilities,
+)
+from .deployment_ci import github_action_reference
+from .platforms.arch import arch_packages_for_capabilities
+
 
 @dataclass(frozen=True, slots=True)
 class Toolchain:
@@ -13,13 +23,25 @@ class Toolchain:
     display: str
     aliases: tuple[str, ...]
     commands: tuple[str, ...]
-    packages: tuple[str, ...]
     setup_commands: tuple[str, ...] = ()
     build_commands: tuple[str, ...] = ()
     test_commands: tuple[str, ...] = ()
     lint_commands: tuple[str, ...] = ()
     gitignore: tuple[str, ...] = ()
     ci_setup: tuple[str, ...] = ()
+
+    @property
+    def capabilities(self) -> tuple[str, ...]:
+        """Compatibility view over provider-neutral catalog selection."""
+
+        capability_id = LANGUAGE_CAPABILITY_IDS.get(self.key)
+        return (capability_id,) if capability_id else ()
+
+    @property
+    def packages(self) -> tuple[str, ...]:
+        """Compatibility view; Arch package authority lives in capability records."""
+
+        return arch_packages_for_capabilities(self.capabilities)
 
 
 TOOLCHAINS: tuple[Toolchain, ...] = (
@@ -28,14 +50,13 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="Python",
         aliases=("python", "python3", "py"),
         commands=("python3",),
-        packages=("python", "python-pip"),
         setup_commands=("python3 -m venv .venv", "source .venv/bin/activate"),
         build_commands=("python3 -m compileall -q .",),
         test_commands=("python3 -m unittest discover -s tests -v",),
         lint_commands=("python3 -m compileall -q .",),
         gitignore=(".venv/", "__pycache__/", "*.py[cod]", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/"),
         ci_setup=(
-            "      - name: Set up Python\n        uses: actions/setup-python@v6\n        with:\n          python-version: '3.13'",
+            f"      - name: Set up Python\n        uses: {github_action_reference('actions/setup-python')}\n        with:\n          python-version: '3.13'",
         ),
     ),
     Toolchain(
@@ -43,14 +64,13 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="JavaScript / Node.js",
         aliases=("javascript", "js", "node", "nodejs", "typescript", "ts"),
         commands=("node", "npm"),
-        packages=("nodejs", "npm"),
         setup_commands=("[ -f package.json ] && npm install || printf '%s\\n' 'No package.json; skipping npm install.'",),
         build_commands=("[ -f package.json ] && npm run build --if-present || printf '%s\\n' 'No package.json; skipping npm build.'",),
         test_commands=("[ -f package.json ] && npm test --if-present || printf '%s\\n' 'No package.json; skipping npm tests.'",),
         lint_commands=("[ -f package.json ] && npm run lint --if-present || printf '%s\\n' 'No package.json; skipping npm lint.'",),
         gitignore=("node_modules/", "npm-debug.log*", "coverage/", "dist/", ".parcel-cache/"),
         ci_setup=(
-            "      - name: Set up Node.js\n        uses: actions/setup-node@v6\n        with:\n          node-version: '24'",
+            f"      - name: Set up Node.js\n        uses: {github_action_reference('actions/setup-node')}\n        with:\n          node-version: '24'",
         ),
     ),
     Toolchain(
@@ -58,7 +78,6 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="Rust",
         aliases=("rust", "cargo"),
         commands=("cargo", "rustc"),
-        packages=("rustup",),
         setup_commands=("rustup default stable", "rustup component add rustfmt clippy"),
         build_commands=("cargo build --locked",),
         test_commands=("cargo test --all-targets --all-features",),
@@ -71,20 +90,18 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="Go",
         aliases=("go", "golang"),
         commands=("go",),
-        packages=("go",),
         setup_commands=("go mod download",),
         build_commands=("go build ./...",),
         test_commands=("go test ./...",),
         lint_commands=("gofmt -l . | tee /tmp/gofmt-files && test ! -s /tmp/gofmt-files", "go vet ./..."),
         gitignore=("bin/", "*.test", "coverage.out"),
-        ci_setup=("      - name: Set up Go\n        uses: actions/setup-go@v6\n        with:\n          go-version: 'stable'",),
+        ci_setup=(f"      - name: Set up Go\n        uses: {github_action_reference('actions/setup-go')}\n        with:\n          go-version: 'stable'",),
     ),
     Toolchain(
         key="php",
         display="PHP",
         aliases=("php", "php8"),
         commands=("php",),
-        packages=("php", "composer"),
         setup_commands=("[ -f composer.json ] && composer install --no-interaction || printf '%s\\n' 'No composer.json; skipping composer install.'",),
         build_commands=("[ -f composer.json ] && composer validate --no-check-publish || printf '%s\\n' 'No composer.json; skipping composer validate.'",),
         test_commands=("[ -f composer.json ] && composer run-script test || printf '%s\\n' 'No composer.json; skipping composer tests.'",),
@@ -97,7 +114,6 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="C / C++",
         aliases=("c", "c++", "cpp", "clang", "gcc"),
         commands=("cmake", "ninja"),
-        packages=("base-devel", "cmake", "ninja", "clang", "gdb"),
         setup_commands=("cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug",),
         build_commands=("cmake --build build",),
         test_commands=("ctest --test-dir build --output-on-failure",),
@@ -109,20 +125,18 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="Java",
         aliases=("java", "kotlin", "jvm"),
         commands=("java",),
-        packages=("jdk-openjdk",),
         setup_commands=("./gradlew --version",),
         build_commands=("./gradlew build",),
         test_commands=("./gradlew test",),
         lint_commands=("./gradlew check",),
         gitignore=(".gradle/", "build/", "*.class", "out/"),
-        ci_setup=("      - name: Set up Java\n        uses: actions/setup-java@v5\n        with:\n          distribution: temurin\n          java-version: '21'",),
+        ci_setup=(f"      - name: Set up Java\n        uses: {github_action_reference('actions/setup-java')}\n        with:\n          distribution: temurin\n          java-version: '21'",),
     ),
     Toolchain(
         key="godot",
         display="Godot / GDScript",
         aliases=("godot", "gdscript"),
         commands=("godot",),
-        packages=("godot",),
         build_commands=("godot --headless --path . --editor --quit",),
         test_commands=("godot --headless --path . --quit",),
         lint_commands=("godot --headless --path . --editor --quit",),
@@ -133,19 +147,25 @@ TOOLCHAINS: tuple[Toolchain, ...] = (
         display="POSIX shell / Bash",
         aliases=("shell", "bash", "sh"),
         commands=("bash", "shellcheck"),
-        packages=("bash", "shellcheck"),
         test_commands=("bash tests/run.sh",),
         lint_commands=("find . -type f -name '*.sh' -not -path './.git/*' -print0 | xargs -0 -r shellcheck",),
     ),
 )
 
-BASE_PACKAGES = ("git", "curl", "jq", "ripgrep", "fd", "unzip", "base-devel")
-OPTIONAL_PACKAGES = ("github-cli", "shellcheck")
+BASE_CAPABILITIES = BASE_CAPABILITY_IDS
+OPTIONAL_CAPABILITIES = OPTIONAL_CAPABILITY_IDS
 
+DATABASE_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    name: (capability_id,)
+    for name, capability_id in DATABASE_CAPABILITY_IDS.items()
+}
+
+# Compatibility constants remain derived from the authoritative Arch catalog.
+BASE_PACKAGES = arch_packages_for_capabilities(BASE_CAPABILITIES)
+OPTIONAL_PACKAGES = arch_packages_for_capabilities(OPTIONAL_CAPABILITIES)
 DATABASE_PACKAGES: dict[str, tuple[str, ...]] = {
-    "sqlite": ("sqlite",),
-    "mariadb": ("mariadb",),
-    "postgresql": ("postgresql",),
+    name: arch_packages_for_capabilities(capabilities)
+    for name, capabilities in DATABASE_CAPABILITIES.items()
 }
 
 DATABASE_COMMANDS: dict[str, str] = {
@@ -186,14 +206,26 @@ def unique(items: Iterable[str]) -> list[str]:
     return result
 
 
+def capabilities_for(
+    languages: Iterable[str],
+    database: str,
+    *,
+    github: bool = True,
+    rootless_podman: bool = False,
+) -> list[str]:
+    language_keys = [toolchain.key for toolchain in selected_toolchains(languages)]
+    return list(select_capabilities(
+        language_keys,
+        database,
+        github=github,
+        rootless_podman=rootless_podman,
+    ))
+
+
 def packages_for(languages: Iterable[str], database: str, *, github: bool = True) -> list[str]:
-    packages: list[str] = list(BASE_PACKAGES)
-    if github:
-        packages.append("github-cli")
-    for toolchain in selected_toolchains(languages):
-        packages.extend(toolchain.packages)
-    packages.extend(DATABASE_PACKAGES.get(database.lower(), ()))
-    return unique(packages)
+    """Return the preserved CachyOS/Arch package view for existing callers."""
+
+    return list(arch_packages_for_capabilities(capabilities_for(languages, database, github=github)))
 
 
 def commands_for(languages: Iterable[str], kind: str) -> list[str]:

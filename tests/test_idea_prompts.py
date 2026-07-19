@@ -47,8 +47,14 @@ class IdeaPromptTests(unittest.TestCase):
             text = result.prompt_path.read_text(encoding="utf-8")
             self.assertIn("Add SQLite save/load support", text)
             self.assertIn("Implement the smallest coherent change", text)
+            self.assertIn("Avoid god files", text)
             self.assertIn("docs/11-IMPLEMENTATION-NOTES.md", text)
-            self.assertIn("Do not run `sudo`, install packages, create GitHub repositories, push", text)
+            self.assertLess(text.index("docs/AGENT-INDEX.md"), text.index("AGENTS.md"))
+            self.assertIn("only the task-relevant files", text)
+            self.assertIn("## Canonical policy references", text)
+            self.assertIn("AGENTS.md#canonical-policy-registry", text)
+            self.assertNotIn("Do not run `sudo`, install packages, create GitHub repositories, push", text)
+            self.assertNotIn("docs/10-PROGRESS.md", text)
 
     def test_from_codex_parses_known_mode(self) -> None:
         mode, idea = parse_mode_and_idea(arguments="implement Add thing")
@@ -74,6 +80,30 @@ class IdeaPromptTests(unittest.TestCase):
                 result = write_idea_prompt(start=root, mode="docs", idea="Refresh README")
             self.assertTrue(result.prompt_path.is_file())
             self.assertIn("Update documentation accurately", result.body)
+
+    def test_same_day_duplicate_preserves_both_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "project"
+            self.make_project(root)
+            first = write_idea_prompt(start=root, mode="implement", idea="Add import", today=date(2026, 7, 14))
+            first.prompt_path.write_text(first.body + "\nreviewed first draft\n", encoding="utf-8")
+            second = write_idea_prompt(start=root, mode="implement", idea="Add import", today=date(2026, 7, 14))
+            self.assertNotEqual(first.prompt_path, second.prompt_path)
+            self.assertEqual(second.prompt_path.name, "2026-07-14-implement-add-import-02.md")
+            self.assertIn("reviewed first draft", first.prompt_path.read_text(encoding="utf-8"))
+            self.assertNotIn("reviewed first draft", second.prompt_path.read_text(encoding="utf-8"))
+
+    def test_prompt_writer_refuses_symlinked_prompt_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "project"
+            root.mkdir()
+            outside = base / "outside"
+            outside.mkdir()
+            (root / "docs").symlink_to(outside, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                write_idea_prompt(start=root, mode="implement", idea="Do not escape")
+            self.assertFalse(any(outside.iterdir()))
 
     def test_prompt_includes_sandbox_guidance_when_project_has_sandbox(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

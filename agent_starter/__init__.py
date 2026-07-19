@@ -1,6 +1,6 @@
 """CLI AI Agent Starter Kit."""
 
-from .models import AdvisorRecommendation, ProjectConfig
+from .models import AdvisorCapability, AdvisorRecommendation, ProjectConfig
 
-__all__ = ["AdvisorRecommendation", "ProjectConfig"]
-__version__ = "0.4.8"
+__all__ = ["AdvisorCapability", "AdvisorRecommendation", "ProjectConfig"]
+__version__ = "0.5.0"

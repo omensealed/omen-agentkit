@@ -23,8 +23,9 @@ class CodexSkillTests(unittest.TestCase):
             skill = (root / SKILL_MD).read_text(encoding="utf-8")
             self.assertTrue(skill.startswith("---\nname: agentkit\n"))
             self.assertIn("description:", skill)
-            self.assertIn("Agent Kit skill version: 0.1.0", skill)
+            self.assertIn(f"Agent Kit skill version: {SKILL_VERSION}", skill)
             self.assertIn("agent-starter idea-prompt", skill)
+            self.assertLess(skill.index("docs/AGENT-INDEX.md"), skill.index("AGENTS.md"))
             self.assertLess(len(skill.splitlines()), 60)
 
             metadata = json.loads((root / SKILL_META).read_text(encoding="utf-8"))

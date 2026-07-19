@@ -10,9 +10,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .policy_fragments import render_prompt_policy_references
+
 
 SKILL_NAME = "agentkit"
-SKILL_VERSION = "0.1.0"
+SKILL_VERSION = "0.2.0"
 AGENT_STARTER_MIN_VERSION = "0.3.0"
 SKILL_DIR = Path(".agents") / "skills" / SKILL_NAME
 SKILL_MD = SKILL_DIR / "SKILL.md"
@@ -50,25 +52,20 @@ Treat the user's short request as an idea, not as the complete task brief.
 
 ## Workflow
 
-1. Inspect the current repository state.
-2. Read `AGENTS.md`.
-3. Read `.agent-starter/project.json` if present.
-4. Read `docs/11-IMPLEMENTATION-NOTES.md` if present.
+1. Read `docs/AGENT-INDEX.md` first and select the matching minimum-context row.
+2. Inspect the current repository state.
+3. Read `AGENTS.md` as binding and only the task-relevant files linked by the index.
+4. Read `.agent-starter/project.json` if present.
 5. Parse the user request into a mode and idea.
 6. Run Agent Kit's prompt builder with safe argument handling, not shell interpolation:
    `agent-starter idea-prompt --from-codex --arguments <user request> --json`
 7. Read the generated prompt file from the returned `prompt_path`.
 8. Follow that generated prompt as the authoritative task brief.
 
-## Safety
+{render_prompt_policy_references()}
 
-- Do not inspect Codex credentials.
-- Do not start `codex login`.
-- Do not bypass approvals or sandboxing.
-- Do not push to GitHub or create remote resources without explicit user approval.
-- Do not overwrite user work.
-- Do not run package installs unless the generated project allows it and the user approves.
-- Always update implementation notes after meaningful work.
+Follow the generated prompt and binding owners. This skill grants no extra filesystem, command, network, login,
+package, remote, or deployment authority.
 
 ## Final response
 

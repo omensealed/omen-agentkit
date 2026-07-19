@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .models import ProjectConfig, SandboxConfig
+from .config_schema import parse_config
+from .entry_modes import parse_entry_mode
 
 
 SECRET_RE = re.compile(
@@ -26,6 +28,7 @@ GUI_PAGES: list[dict[str, object]] = [
     {"id": "sandbox", "title": "Rootless Podman Sandbox"},
     {"id": "stack", "title": "Technology Stack"},
     {"id": "quality", "title": "Testing, Git, Automation"},
+    {"id": "task", "title": "Task Composer"},
     {"id": "review", "title": "Review"},
     {"id": "generate", "title": "Generate"},
     {"id": "result", "title": "Result"},
@@ -49,9 +52,7 @@ def _string_list(value: Any) -> list[str]:
 def _bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-    return bool(value)
+    raise ValueError("Boolean form fields must be true or false, not strings, numbers, lists, or objects.")
 
 
 def _recursive_strings(value: Any) -> list[str]:
@@ -81,6 +82,7 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
 
     if not isinstance(payload, dict):
         raise ValueError("GUI payload must be an object.")
+    parse_entry_mode(payload.get("entry_mode", "guided"))
     _reject_secrets(payload)
     project_name = str(payload.get("project_name") or "").strip()
     project_path = str(payload.get("project_path") or "").strip()
@@ -90,6 +92,9 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
         raise ValueError("Project folder is required.")
 
     sandbox_mode = str(payload.get("sandbox_mode") or "toolchain").strip().lower()
+    sandbox_image_profile = str(payload.get("sandbox_image_profile") or "arch-toolchain").strip().lower()
+    if sandbox_image_profile not in {"arch-toolchain", "debian-toolchain"}:
+        raise ValueError("Sandbox image profile must be arch-toolchain or debian-toolchain.")
     sandbox_enabled = _bool(payload.get("sandbox_enabled", True))
     if not sandbox_enabled:
         sandbox_mode = "none"
@@ -100,6 +105,7 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
             "enabled": sandbox_enabled and sandbox_mode != "none",
             "engine": "podman",
             "mode": sandbox_mode,
+            "image_profile": sandbox_image_profile,
             "codex_inside_container": sandbox_mode == "codex",
             "rootless_required": True,
             "install_agentkit_skill": _bool(payload.get("codex_agentkit_skill", True)),
@@ -107,6 +113,7 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
             "gui_passthrough": _bool(payload.get("gui_passthrough", False)),
         }
     )
+    arch_extra_packages = _string_list(payload.get("cachyos_packages"))
 
     config = ProjectConfig(
         project_name=project_name,
@@ -145,7 +152,7 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
         tests=_string_list(payload.get("tests")) or ["unit", "integration"],
         browser_tests=_bool(payload.get("browser_tests", False)),
         quality_checks=_string_list(payload.get("quality_checks")) or ["format", "lint", "tests"],
-        cachyos_packages=_string_list(payload.get("cachyos_packages")),
+        extra_packages_by_provider={"arch": arch_extra_packages} if arch_extra_packages else {},
         open_questions=_string_list(payload.get("open_questions")),
         sandbox=sandbox,
     )
@@ -153,4 +160,4 @@ def config_from_gui_payload(payload: dict[str, Any]) -> ProjectConfig:
         raise ValueError("Project mode must be new or existing.")
     if config.database not in {"none", "sqlite", "mariadb", "postgresql", "existing", "undecided"}:
         raise ValueError("Database must be none, sqlite, mariadb, postgresql, existing, or undecided.")
-    return config
+    return parse_config(config.to_dict()).config

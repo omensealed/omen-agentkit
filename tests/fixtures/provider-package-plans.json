@@ -1,0 +1,46 @@
+{
+  "capabilities": [
+    "base.tooling",
+    "language.python",
+    "database.sqlite",
+    "sandbox.rootless-podman"
+  ],
+  "providers": {
+    "cachyos": {
+      "detected_provider": "arch",
+      "package_manager": "pacman",
+      "install_argv": [
+        "sudo", "pacman", "-S", "--needed", "git", "curl", "jq", "ripgrep", "fd", "unzip",
+        "base-devel", "python", "python-pip", "sqlite", "podman", "passt", "fuse-overlayfs"
+      ]
+    },
+    "arch": {
+      "detected_provider": "arch",
+      "package_manager": "pacman",
+      "install_argv": [
+        "sudo", "pacman", "-S", "--needed", "git", "curl", "jq", "ripgrep", "fd", "unzip",
+        "base-devel", "python", "python-pip", "sqlite", "podman", "passt", "fuse-overlayfs"
+      ]
+    },
+    "debian": {
+      "detected_provider": "debian",
+      "package_manager": "apt-get",
+      "refresh_argv": ["sudo", "apt-get", "update"],
+      "install_argv": [
+        "sudo", "apt-get", "install", "--yes", "git", "curl", "jq", "ripgrep", "fd-find", "unzip",
+        "build-essential", "python3", "python3-venv", "python3-pip", "sqlite3", "podman", "uidmap",
+        "slirp4netns", "fuse-overlayfs"
+      ]
+    },
+    "ubuntu": {
+      "detected_provider": "ubuntu",
+      "package_manager": "apt-get",
+      "refresh_argv": ["sudo", "apt-get", "update"],
+      "install_argv": [
+        "sudo", "apt-get", "install", "--yes", "git", "curl", "jq", "ripgrep", "fd-find", "unzip",
+        "build-essential", "python3", "python3-venv", "python3-pip", "sqlite3", "podman", "uidmap",
+        "slirp4netns", "fuse-overlayfs"
+      ]
+    }
+  }
+}

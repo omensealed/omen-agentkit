@@ -3,6 +3,10 @@ from __future__ import annotations
 import unittest
 
 from agent_starter.toolchains import (
+    BASE_PACKAGES,
+    DATABASE_PACKAGES,
+    OPTIONAL_PACKAGES,
+    capabilities_for,
     ci_setup_for,
     commands_for,
     fallback_recommendation,
@@ -23,6 +27,14 @@ class ToolchainTests(unittest.TestCase):
 
     def test_cachyos_packages_and_ignores(self) -> None:
         packages = packages_for(["python"], "sqlite", github=True)
+        self.assertEqual(
+            packages,
+            ["git", "curl", "jq", "ripgrep", "fd", "unzip", "base-devel", "github-cli", "python", "python-pip", "sqlite"],
+        )
+        self.assertEqual(
+            capabilities_for(["python"], "sqlite", github=True),
+            ["base.tooling", "optional.github-cli", "language.python", "database.sqlite"],
+        )
         self.assertIn("python", packages)
         self.assertIn("sqlite", packages)
         self.assertIn("github-cli", packages)
@@ -42,6 +54,31 @@ class ToolchainTests(unittest.TestCase):
         self.assertIn("docs/agent-prompts/", ignores)
         self.assertIn("NEXT_PROMPT.md", ignores)
         self.assertIn("LOCAL_MODEL_HANDOFF.md", ignores)
+
+    def test_all_legacy_arch_package_views_remain_equivalent(self) -> None:
+        self.assertEqual(BASE_PACKAGES, ("git", "curl", "jq", "ripgrep", "fd", "unzip", "base-devel"))
+        self.assertEqual(OPTIONAL_PACKAGES, ("github-cli", "shellcheck"))
+        self.assertEqual(DATABASE_PACKAGES, {
+            "sqlite": ("sqlite",),
+            "mariadb": ("mariadb",),
+            "postgresql": ("postgresql",),
+        })
+        self.assertEqual(
+            {item.key: item.packages for item in selected_toolchains(
+                ["python", "javascript", "rust", "go", "php", "cpp", "java", "godot", "shell"]
+            )},
+            {
+                "python": ("python", "python-pip"),
+                "javascript": ("nodejs", "npm"),
+                "rust": ("rustup",),
+                "go": ("go",),
+                "php": ("php", "composer"),
+                "cpp": ("base-devel", "cmake", "ninja", "clang", "gdb"),
+                "java": ("jdk-openjdk",),
+                "godot": ("godot",),
+                "shell": ("bash", "shellcheck"),
+            },
+        )
 
     def test_fallback_recommendations(self) -> None:
         languages, database, architecture = fallback_recommendation("game", ["browser"], True)

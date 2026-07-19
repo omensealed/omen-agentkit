@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scenario_ids": [
+    "clean-repository",
+    "dirty-repository",
+    "generated-file-conflicts",
+    "symlinked-directory",
+    "older-agentkit-metadata",
+    "manually-edited-answers",
+    "large-god-file-hotspot"
+  ],
+  "owner_content": {
+    "readme": "# Owner project\n\nThis content belongs to the existing repository.\n",
+    "deployment": "# Owner deployment runbook\n\nKeep this project-specific procedure.\n",
+    "dirty_marker": "# owner uncommitted change\n"
+  },
+  "manual_answers": {
+    "schema_version": 2,
+    "project_name": "Manually Edited Existing Project",
+    "project_path": "__PROJECT_PATH__",
+    "project_mode": "existing",
+    "project_type": "cli",
+    "description": "A manually maintained answers file.",
+    "languages": ["python"],
+    "database": "sqlite",
+    "primary_agent": "codex",
+    "network_access": false,
+    "git_enabled": false,
+    "extra_packages_by_provider": {
+      "arch": ["ripgrep"]
+    },
+    "custom_test_commands": ["python3 -m unittest"]
+  }
+}

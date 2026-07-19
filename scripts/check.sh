@@ -22,4 +22,7 @@ printf '%s\n' '== Generation smoke test =='
 printf '%s\n' '== User-local install smoke test =='
 ./scripts/install-smoke-test.sh
 
+printf '%s\n' '== Wheel/sdist install smoke test =='
+./scripts/package-smoke-test.sh
+
 printf '%s\n' 'All starter-kit checks passed.'

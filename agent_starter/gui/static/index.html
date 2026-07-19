@@ -7,16 +7,24 @@
     <link rel="stylesheet" href="app.css">
   </head>
   <body>
+    <a class="skip-link" href="#wizard-panel">Skip to the current wizard step</a>
     <main class="shell">
       <aside class="steps" aria-label="Wizard steps">
         <h1>Agent Kit</h1>
         <ol id="steps"></ol>
       </aside>
-      <section class="panel">
+      <section class="panel" id="wizard-panel" tabindex="-1">
         <form id="wizard">
           <section class="page active" data-page="welcome">
             <h2>Welcome</h2>
             <p>Create a Codex-ready workspace with durable docs, safe scripts, optional rootless Podman sandboxing, and the repo-local <code>$agentkit</code> skill.</p>
+            <label>Setup experience
+              <select name="entry_mode" id="entry-mode">
+                <option value="guided" selected>Guided — safe defaults and essential decisions</option>
+                <option value="advanced">Advanced — show every setting</option>
+              </select>
+            </label>
+            <p id="entry-mode-explanation">Guided mode explains consequences one decision at a time and hides nonessential implementation settings. You can switch to Advanced at any time.</p>
           </section>
 
           <section class="page" data-page="project">
@@ -29,7 +37,7 @@
                 <option value="existing">Existing project renovation</option>
               </select>
             </label>
-            <label>Stage
+            <label data-advanced-only>Stage
               <select name="project_stage">
                 <option value="idea">Idea</option>
                 <option value="prototype">Prototype</option>
@@ -44,14 +52,14 @@
             <label>Project type <input name="project_type" value="cli" placeholder="cli, web, game, api"></label>
             <label>Description <textarea name="description" rows="4" placeholder="What should this become?"></textarea></label>
             <label>Goals <textarea name="goals" rows="3" placeholder="One per line or comma-separated"></textarea></label>
-            <label>Non-goals <textarea name="non_goals" rows="3"></textarea></label>
+            <label data-advanced-only>Non-goals <textarea name="non_goals" rows="3"></textarea></label>
           </section>
 
           <section class="page" data-page="targets">
             <h2>Users, Platforms, Packages</h2>
             <label>Target users <input name="target_users" placeholder="Who is this for?"></label>
             <label>Target platforms <input name="target_platforms" value="cachyos-linux"></label>
-            <label>Packaging targets <input name="packaging_targets" value="source checkout"></label>
+            <label data-advanced-only>Packaging targets <input name="packaging_targets" value="source checkout"></label>
           </section>
 
           <section class="page" data-page="security">
@@ -62,23 +70,23 @@
               <label><input type="checkbox" name="handles_personal_data"> Personal data</label>
               <label><input type="checkbox" name="handles_payments"> Payments</label>
             </div>
-            <label>Security notes <textarea name="security_notes" rows="4"></textarea></label>
+            <label data-advanced-only>Security notes <textarea name="security_notes" rows="4"></textarea></label>
           </section>
 
           <section class="page" data-page="codex">
             <h2>Codex Setup</h2>
             <p>Authorization stays with the official Codex CLI. The GUI never asks for tokens or reads credential files.</p>
             <label><input type="checkbox" name="codex_agentkit_skill" checked> Install the repo-local <code>$agentkit</code> Codex skill</label>
-            <label><input type="checkbox" name="setup_agent_now"> Offer Codex setup after generation</label>
+            <label data-advanced-only><input type="checkbox" name="setup_agent_now"> Offer Codex setup after generation</label>
             <button type="button" id="codex-status">Check Codex status</button>
-            <pre id="codex-output"></pre>
+            <pre id="codex-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Codex status" tabindex="0"></pre>
           </section>
 
           <section class="page" data-page="sandbox">
             <h2>Rootless Podman Sandbox</h2>
             <p>Generation writes reviewable sandbox files only. It does not install packages or run Podman.</p>
             <label><input type="checkbox" name="sandbox_enabled" checked> Create sandbox files</label>
-            <label>Sandbox mode
+            <label data-advanced-only>Sandbox mode
               <select name="sandbox_mode">
                 <option value="toolchain">Host Codex, containerized tests/toolchain</option>
                 <option value="codex">Run Codex inside the project container</option>
@@ -86,9 +94,15 @@
                 <option value="none">No sandbox</option>
               </select>
             </label>
-            <label><input type="checkbox" name="first_run_autonomous_prompt"> Create opt-in autonomous first-run prompt</label>
-            <label><input type="checkbox" name="gui_passthrough"> Advanced: allow generated game playtest script to mount host GPU/audio/controller interfaces</label>
-            <p>For Godot or other interactive games, headless sandbox checks can work without passthrough, but interactive container playtesting probably will not. Leave this off unless you understand the extra host interface exposure.</p>
+            <label data-advanced-only>Toolchain image (independent from host distribution)
+              <select name="sandbox_image_profile">
+                <option value="arch-toolchain">Arch Linux toolchain</option>
+                <option value="debian-toolchain">Debian stable toolchain</option>
+              </select>
+            </label>
+            <label data-advanced-only><input type="checkbox" name="first_run_autonomous_prompt"> Create opt-in autonomous first-run prompt</label>
+            <label data-advanced-only><input type="checkbox" name="gui_passthrough"> Advanced: allow generated game playtest script to mount host GPU/audio/controller interfaces</label>
+            <p data-advanced-only>For Godot or other interactive games, headless sandbox checks can work without passthrough, but interactive container playtesting probably will not. Leave this off unless you understand the extra host interface exposure.</p>
           </section>
 
           <section class="page" data-page="stack">
@@ -104,18 +118,18 @@
                 <option value="undecided">Undecided</option>
               </select>
             </label>
-            <label>Stack notes <textarea name="stack_notes" rows="4"></textarea></label>
-            <label><input type="checkbox" name="minimal_dependencies" checked> Prefer minimal dependencies</label>
+            <label data-advanced-only>Stack notes <textarea name="stack_notes" rows="4"></textarea></label>
+            <label data-advanced-only><input type="checkbox" name="minimal_dependencies" checked> Prefer minimal dependencies</label>
           </section>
 
           <section class="page" data-page="quality">
             <h2>Testing, Git, Automation</h2>
-            <label>Tests <input name="tests" value="unit, integration"></label>
-            <label>Quality checks <input name="quality_checks" value="format, lint, tests"></label>
-            <label><input type="checkbox" name="browser_tests"> Browser tests</label>
+            <label data-advanced-only>Tests <input name="tests" value="unit, integration"></label>
+            <label data-advanced-only>Quality checks <input name="quality_checks" value="format, lint, tests"></label>
+            <label data-advanced-only><input type="checkbox" name="browser_tests"> Browser tests</label>
             <label><input type="checkbox" name="git_enabled" checked> Initialize local Git</label>
             <label><input type="checkbox" name="github_actions"> Generate GitHub Actions workflow</label>
-            <label>GitHub remote
+            <label data-advanced-only>GitHub remote
               <select name="github_remote">
                 <option value="later">Decide later</option>
                 <option value="none">No remote</option>
@@ -125,29 +139,59 @@
             </label>
           </section>
 
+          <section class="page" data-page="task">
+            <h2>Task Composer</h2>
+            <p>Describe one focused next task. Only questions relevant to the selected kind are shown. This creates reviewable prompt data; it does not run Codex or execute a command.</p>
+            <label>Starting choice
+              <select id="task-kind"></select>
+            </label>
+            <div id="task-composer"></div>
+            <button type="button" id="compose-task">Compose Task</button>
+            <button type="button" id="edit-task" hidden>Edit answers</button>
+            <button type="button" id="approve-task" hidden>Approve prompt</button>
+            <pre id="task-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Task composer status" tabindex="0"></pre>
+            <section class="draft-controls" aria-labelledby="draft-heading">
+              <h3 id="draft-heading">Draft session</h3>
+              <p>Drafts stay in private user-local application data. Saving a draft does not validate, generate, approve, or launch the project.</p>
+              <button type="button" id="save-draft">Save current draft</button>
+              <button type="button" id="refresh-drafts">Refresh draft list</button>
+              <label>Saved drafts
+                <select id="draft-list"></select>
+              </label>
+              <button type="button" id="resume-draft">Resume selected draft</button>
+              <button type="button" id="discard-draft">Discard selected draft</button>
+              <label>New export file
+                <input id="draft-export-path" placeholder="/path/to/new-draft-export.json">
+              </label>
+              <button type="button" id="export-draft">Export selected draft</button>
+              <p id="draft-status" role="status" aria-live="polite" aria-atomic="true" tabindex="0"></p>
+            </section>
+          </section>
+
           <section class="page" data-page="review">
             <h2>Review</h2>
             <button type="button" id="preview">Preview Config</button>
-            <pre id="preview-output"></pre>
+            <pre id="preview-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Configuration preview status" tabindex="0"></pre>
           </section>
 
           <section class="page" data-page="generate">
             <h2>Generate</h2>
             <p>This will write files under the selected project folder. Existing files are preserved through proposals unless you later choose a force path in the CLI.</p>
             <button type="button" id="generate">Generate Workspace</button>
-            <pre id="generate-output"></pre>
+            <pre id="generate-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Generation status" tabindex="0"></pre>
           </section>
 
           <section class="page" data-page="result">
             <h2>Result</h2>
             <div class="actions">
               <button type="button" id="open-folder">Open project folder</button>
+              <button type="button" id="start-here">View START_HERE.md</button>
               <button type="button" id="next-steps">View NEXT_STEPS.md</button>
               <button type="button" id="first-prompt">Copy FIRST_PROMPT.md</button>
               <button type="button" id="validate">Run validation</button>
-              <button type="button" id="launch-codex">Launch Codex</button>
+              <button type="button" id="launch-codex">Review launch settings</button>
             </div>
-            <pre id="result-output"></pre>
+            <pre id="result-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Result status" tabindex="0"></pre>
           </section>
         </form>
         <nav class="nav">
