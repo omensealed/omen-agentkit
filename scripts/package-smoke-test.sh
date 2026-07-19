@@ -4,7 +4,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-python3 -m build --no-isolation --outdir "$TMP/dist" "$ROOT" >/dev/null
+python3 -m agent_starter.build_frontend --root "$ROOT" --outdir "$TMP/dist" >/dev/null
 test "$(find "$TMP/dist" -maxdepth 1 -name '*.whl' | wc -l)" -eq 1
 test "$(find "$TMP/dist" -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 1
 

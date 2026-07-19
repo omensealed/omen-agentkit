@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.2 — 2026-07-19
+
+- Build release artifacts through the declared setuptools PEP 517 backend without installing an undeclared `build`
+  frontend on clean GitHub runners.
+- Keep both failed verification tags immutable and repeat the fail-closed workflow under a new corrective version.
+
 ## 0.5.1 — 2026-07-19
 
 - Remove public links and package-manifest claims for intentionally private maintainer ledgers so clean source checkouts

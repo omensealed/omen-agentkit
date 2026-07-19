@@ -43,8 +43,8 @@ jobs:
         run: python3 -m agent_starter.release_safety --root . --expected-tag "$RELEASE_TAG" --actual-ref "$GITHUB_REF"
       - name: Run complete trusted checks
         run: ./scripts/check.sh
-      - name: Build exact release artifacts
-        run: python3 -m build --no-isolation --outdir "$RUNNER_TEMP/release" .
+      - name: Build exact release artifacts without installing packages
+        run: python3 -m agent_starter.build_frontend --root . --outdir "$RUNNER_TEMP/release"
       - name: Create create-only checksum and SPDX evidence
         run: python3 -m agent_starter.release_artifacts "$RUNNER_TEMP/release"
       - name: Smoke-install the exact release artifacts
