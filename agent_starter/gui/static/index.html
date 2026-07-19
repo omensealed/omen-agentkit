@@ -148,7 +148,8 @@
               </select>
             </label>
             <div id="task-composer"></div>
-            <button type="button" id="compose-task">Compose Task</button>
+            <p id="task-required-help">Complete each required task answer to enable Compose Task.</p>
+            <button type="button" id="compose-task" disabled aria-describedby="task-required-help">Compose Task</button>
             <button type="button" id="edit-task" hidden>Edit answers</button>
             <button type="button" id="approve-task" hidden>Approve prompt</button>
             <pre id="task-output" role="status" aria-live="polite" aria-atomic="true" aria-label="Task composer status" tabindex="0"></pre>

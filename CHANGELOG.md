@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.5.6 — 2026-07-19
+
+- Keep GUI task composition unavailable until every required answer is complete, explain the gate in the interface,
+  and recompute completion after resuming a draft so incomplete payloads do not reach backend validation.
+
 ## 0.5.5 — 2026-07-19
 
 - Populate the GUI task composer's Starting choice only after pywebview signals that its Python bridge is ready,

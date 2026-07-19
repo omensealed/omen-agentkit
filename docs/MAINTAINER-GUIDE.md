@@ -36,6 +36,6 @@ Focused commands and test strategy are in [development](DEVELOPMENT.md). In a ma
 
 Read [release safety](RELEASE-SAFETY.md), [supply-chain policy](SUPPLY-CHAIN-POLICY.md), and the [GitHub Actions update policy](GITHUB-ACTIONS-UPDATE-POLICY.md). Ordinary CI cannot publish. Release dispatch is manual, exact-tag-bound, clean-tree-gated, and separates verification from final protected publication authority.
 
-The current corrective candidate evidence is in [0.5.5 release candidate](RELEASE-CANDIDATE-0.5.5.md). Accept burn-in only through the opt-in [user-submitted reporting guide](BURN-IN.md); add no telemetry or background reporting.
+The current corrective candidate evidence is in [0.5.6 release candidate](RELEASE-CANDIDATE-0.5.6.md). Accept burn-in only through the opt-in [user-submitted reporting guide](BURN-IN.md); add no telemetry or background reporting.
 
 Never tag, publish, push, install, deploy, or contact production as an implied maintenance step.

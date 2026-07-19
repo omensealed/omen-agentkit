@@ -287,10 +287,17 @@ function renderTaskQuestions() {
       control = document.createElement("textarea");
       control.rows = 3;
       control.value = question.default;
-      control.required = question.required;
     }
+    control.required = question.required;
     control.dataset.taskKey = question.key;
+    control.dataset.taskPrompt = question.prompt;
     control.id = `task-${kind}-${question.key}`;
+    const answerChanged = () => {
+      control.removeAttribute("aria-invalid");
+      updateComposeAvailability();
+    };
+    control.addEventListener("input", answerChanged);
+    control.addEventListener("change", answerChanged);
     label.htmlFor = control.id;
     label.appendChild(control);
     container.appendChild(label);
@@ -300,6 +307,7 @@ function renderTaskQuestions() {
   setOutput("task-output", "");
   guidedDecisionIndex = 0;
   renderGuidedDecision();
+  updateComposeAvailability();
 }
 
 async function initializeTaskComposer() {
@@ -318,9 +326,10 @@ async function initializeTaskComposer() {
     selector.appendChild(option);
   });
   selector.addEventListener("change", renderTaskQuestions);
-  selector.disabled = false;
   taskComposerInitialized = true;
   renderTaskQuestions();
+  selector.disabled = false;
+  updateComposeAvailability();
 }
 
 function taskPayload() {
@@ -329,6 +338,46 @@ function taskPayload() {
     answers[control.dataset.taskKey] = control.value;
   });
   return {kind: document.getElementById("task-kind").value, answers};
+}
+
+function updateComposeAvailability() {
+  const selector = document.getElementById("task-kind");
+  const controls = Array.from(document.querySelectorAll("#task-composer [data-task-key]"));
+  const complete = taskComposerInitialized
+    && selector
+    && !selector.disabled
+    && Boolean(selector.value)
+    && controls.every((control) => !control.required || control.value.trim());
+  document.getElementById("compose-task").disabled = !complete;
+}
+
+function revealTaskControl(control) {
+  const page = document.querySelector('.page[data-page="task"]');
+  const label = control.closest("label");
+  const decisions = guidedDecisions(page);
+  const decisionIndex = decisions.indexOf(label);
+  if (isGuided() && decisionIndex >= 0) {
+    guidedDecisionIndex = decisionIndex;
+    renderGuidedDecision();
+  }
+  control.focus();
+}
+
+function validatedTaskPayload() {
+  const selector = document.getElementById("task-kind");
+  if (!taskComposerInitialized || selector.disabled || !selector.value) {
+    setOutput("task-output", "Task choices are still loading. Wait a moment, then try again.");
+    return null;
+  }
+  const controls = Array.from(document.querySelectorAll("#task-composer [data-task-key]"));
+  const missing = controls.find((control) => control.required && !control.value.trim());
+  if (missing) {
+    missing.setAttribute("aria-invalid", "true");
+    setOutput("task-output", `Answer required: ${missing.dataset.taskPrompt}`);
+    revealTaskControl(missing);
+    return null;
+  }
+  return taskPayload();
 }
 
 function selectedDraftId() {
@@ -365,6 +414,7 @@ function applyDraftTask(task) {
     const control = document.querySelector(`#task-composer [data-task-key="${key}"]`);
     if (control) control.value = value;
   });
+  updateComposeAvailability();
 }
 
 async function refreshDrafts(preferredId = "") {
@@ -471,7 +521,9 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("compose-task").addEventListener("click", async () => {
-    const result = await safeCall("task-output", () => api().compose_task(taskPayload()));
+    const payload = validatedTaskPayload();
+    if (!payload) return;
+    const result = await safeCall("task-output", () => api().compose_task(payload));
     if (result && result.ok) {
       setOutput("task-output", result.contract_text);
       document.getElementById("edit-task").hidden = false;
@@ -488,10 +540,12 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("approve-task").addEventListener("click", async () => {
+    const payload = validatedTaskPayload();
+    if (!payload) return;
     if (!window.confirm(
       "Approve this prompt? This releases prompt text in the GUI only. It does not launch Codex, run commands, or change project files.",
     )) return;
-    const result = await safeCall("task-output", () => api().approve_task(taskPayload()));
+    const result = await safeCall("task-output", () => api().approve_task(payload));
     if (result && result.ok) {
       setOutput("task-output", `Prompt approved. Codex has not been launched.\n\n${result.request}`);
       document.getElementById("approve-task").hidden = true;

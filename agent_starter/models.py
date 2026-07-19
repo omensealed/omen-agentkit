@@ -227,7 +227,7 @@ class ProjectConfig:
     """Answers collected by the wizard and persisted with generated projects."""
 
     schema_version: int = SCHEMA_VERSION
-    kit_version: str = "0.5.5"
+    kit_version: str = "0.5.6"
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
 
