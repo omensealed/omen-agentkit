@@ -134,6 +134,9 @@ class DeploymentCIPolicyTests(unittest.TestCase):
         self.assertIn("id-token: write", workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("packages: write", workflow)
+        self.assertIn("run: ./scripts/check.sh --skip-package-smoke", workflow)
+        self.assertIn("if: matrix.python-version == '3.11'", workflow)
+        self.assertIn("run: ./scripts/package-smoke-test.sh", workflow)
         self.assertNotIn("release", workflow.lower().split("jobs:", 1)[0])
 
 

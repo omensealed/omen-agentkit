@@ -38,8 +38,11 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Run checks
-        run: ./scripts/check.sh
+      - name: Run source and compatibility checks
+        run: ./scripts/check.sh --skip-package-smoke
+      - name: Run no-install package smoke on the minimum supported Python
+        if: matrix.python-version == '3.11'
+        run: ./scripts/package-smoke-test.sh
 
   provider-container-smoke:
     runs-on: ubuntu-latest
