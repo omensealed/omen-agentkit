@@ -91,8 +91,8 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(
             digests,
             [
-                "40a4364f9c0d4dedaf070dce776660686295d10e69ecc7291d9f74f6ff316d72",
-                "4f089428dea360cb87ffddbbeeca24c9aad0730b8fc1dc525c94c8875d32a6fe",
+                "91350fb0805d7b9e6a3e939c28fdd3ab6f4bae9785ad08c45672206196924637",
+                "22331047925ddc481867a93f09d811fb1bd38c7467853651f83100eb29f96927",
             ],
         )
 
@@ -913,7 +913,7 @@ class TemplateTests(unittest.TestCase):
         )
         self.assertIn("permissions:\n  contents: read", rendered)
         self.assertIn(
-            "uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0",
+            "uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
             rendered,
         )
 
