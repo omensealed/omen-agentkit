@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -543,6 +545,9 @@ class GuiTests(unittest.TestCase):
         self.assertIn('Next decision', script)
         self.assertIn('id="task-composer"', html)
         self.assertIn('initializeTaskComposer', script)
+        self.assertIn('window.addEventListener("pywebviewready", initializeBridgeFeatures)', script)
+        self.assertIn('initializeBridgeFeatures();', script)
+        self.assertIn('if (taskComposerInitialized || !api()) return;', script)
         self.assertIn('id="edit-task"', html)
         self.assertIn('id="approve-task"', html)
         self.assertIn('api().approve_task', script)
@@ -557,6 +562,44 @@ class GuiTests(unittest.TestCase):
         self.assertIn('api().load_draft', script)
         app_source = Path(app.__file__).read_text(encoding="utf-8")
         self.assertIn('GuiBridge(diagnostic_logger=get_diagnostic_log())', app_source)
+
+    def test_gui_task_choices_wait_for_the_pywebview_ready_event(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is unavailable for the bundled GUI readiness check")
+        from agent_starter.gui import app
+
+        harness = r"""
+const callbacks = {};
+let schemaCalls = 0;
+const taskOutput = {textContent: ""};
+global.window = {
+  addEventListener: (name, callback) => { callbacks[name] = callback; },
+  pywebview: {api: {
+    task_composer_schema: async () => {
+      schemaCalls += 1;
+      throw new Error("stop after readiness proof");
+    },
+  }},
+};
+global.document = {
+  getElementById: (id) => id === "task-output" ? taskOutput : null,
+};
+require(process.argv[1]);
+if (schemaCalls !== 0) throw new Error("schema loaded before pywebviewready");
+if (typeof callbacks.pywebviewready !== "function") throw new Error("missing pywebviewready listener");
+callbacks.pywebviewready().then(() => {
+  if (schemaCalls !== 1) throw new Error(`expected one schema call, got ${schemaCalls}`);
+  if (!taskOutput.textContent.includes("could not be loaded")) throw new Error("missing safe load error");
+});
+"""
+        completed = subprocess.run(
+            [node, "-e", harness, str(app.static_path().with_name("app.js"))],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_gui_console_entry_help_needs_no_display_or_optional_dependency(self) -> None:
         from agent_starter.gui import app

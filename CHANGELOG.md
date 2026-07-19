@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.5 — 2026-07-19
+
+- Populate the GUI task composer's Starting choice only after pywebview signals that its Python bridge is ready,
+  while retaining an already-ready fallback and a visible non-technical loading failure.
+- Add bundled-script regression coverage for the bridge-readiness race without changing task schemas, approvals,
+  generated projects, or launch behavior.
+
 ## 0.5.4 — 2026-07-19
 
 - Use explicit checkout-free GitHub release notes because GitHub CLI does not support combining `--repo` with

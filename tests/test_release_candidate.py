@@ -8,7 +8,7 @@ from agent_starter.release_safety import verify_release_safety
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CANDIDATE_VERSION = "0.5.4"
+CANDIDATE_VERSION = "0.5.5"
 
 
 class ReleaseCandidateTests(unittest.TestCase):

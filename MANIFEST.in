@@ -28,6 +28,7 @@ include docs/RELEASE-CANDIDATE-0.5.1.md
 include docs/RELEASE-CANDIDATE-0.5.2.md
 include docs/RELEASE-CANDIDATE-0.5.3.md
 include docs/RELEASE-CANDIDATE-0.5.4.md
+include docs/RELEASE-CANDIDATE-0.5.5.md
 include docs/RELEASE-SAFETY.md
 include docs/SECURITY-MODEL.md
 include docs/SECURITY-REGRESSION-SUITE.md

@@ -143,7 +143,9 @@
             <h2>Task Composer</h2>
             <p>Describe one focused next task. Only questions relevant to the selected kind are shown. This creates reviewable prompt data; it does not run Codex or execute a command.</p>
             <label>Starting choice
-              <select id="task-kind"></select>
+              <select id="task-kind" disabled>
+                <option value="">Loading task choices…</option>
+              </select>
             </label>
             <div id="task-composer"></div>
             <button type="button" id="compose-task">Compose Task</button>

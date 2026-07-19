@@ -18,6 +18,7 @@ let index = 0;
 let lastProjectPath = "";
 let guidedDecisionIndex = 0;
 let taskDefinitions = [];
+let taskComposerInitialized = false;
 let currentDraftId = "";
 let pendingLaunchPreviewId = "";
 
@@ -302,8 +303,12 @@ function renderTaskQuestions() {
 }
 
 async function initializeTaskComposer() {
-  if (!api()) return;
-  taskDefinitions = await api().task_composer_schema();
+  if (taskComposerInitialized || !api()) return;
+  const definitions = await api().task_composer_schema();
+  if (!Array.isArray(definitions) || !definitions.length) {
+    throw new Error("The task composer returned no starting choices.");
+  }
+  taskDefinitions = definitions;
   const selector = document.getElementById("task-kind");
   selector.replaceChildren();
   taskDefinitions.forEach((definition) => {
@@ -313,6 +318,8 @@ async function initializeTaskComposer() {
     selector.appendChild(option);
   });
   selector.addEventListener("change", renderTaskQuestions);
+  selector.disabled = false;
+  taskComposerInitialized = true;
   renderTaskQuestions();
 }
 
@@ -401,6 +408,19 @@ async function safeCall(outputId, fn) {
   }
 }
 
+async function initializeBridgeFeatures() {
+  if (!api()) return;
+  try {
+    await initializeTaskComposer();
+    await refreshDrafts();
+  } catch (_error) {
+    taskComposerInitialized = false;
+    setOutput("task-output", "Task choices could not be loaded. Close and reopen Agent Kit, then try again.");
+  }
+}
+
+window.addEventListener("pywebviewready", initializeBridgeFeatures);
+
 function installSteps() {
   const list = document.getElementById("steps");
   pageIds.forEach((id, itemIndex) => {
@@ -437,8 +457,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const entryMode = document.getElementById("entry-mode");
   setEntryMode(entryMode.value);
   entryMode.addEventListener("change", () => setEntryMode(entryMode.value));
-  initializeTaskComposer();
-  refreshDrafts();
+  initializeBridgeFeatures();
 
   document.getElementById("back").addEventListener("click", () => advanceGuidedDecision(-1));
   document.getElementById("next").addEventListener("click", () => advanceGuidedDecision(1));
