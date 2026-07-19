@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.4 — 2026-07-19
+
+- Use explicit checkout-free GitHub release notes because GitHub CLI does not support combining `--repo` with
+  `--notes-from-tag`.
+- Keep prior tags immutable and preserve the same exact verified-asset publication boundary.
+
 ## 0.5.3 — 2026-07-19
 
 - Bind checkout-free GitHub release creation and publication commands to the explicit repository identifier instead of

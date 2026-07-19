@@ -100,6 +100,8 @@ class ReleaseSafetyTests(unittest.TestCase):
         self.assertIn('commits/$RELEASE_TAG" --jq .sha', publish)
         self.assertIn("gh release create", publish)
         self.assertIn('--repo "$GITHUB_REPOSITORY"', publish)
+        self.assertNotIn("--notes-from-tag", publish)
+        self.assertIn('--notes "Omen AgentKit $RELEASE_TAG.', publish)
         self.assertIn("--draft", publish)
         self.assertIn('gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false', publish)
         self.assertNotIn("deploy", workflow.lower())

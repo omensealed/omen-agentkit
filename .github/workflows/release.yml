@@ -97,6 +97,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$RELEASE_TAG" \
-            --notes-from-tag \
+            --notes "Omen AgentKit $RELEASE_TAG. See CHANGELOG.md at this exact tag for the reviewed change record." \
             --draft
           gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false

@@ -12,7 +12,7 @@ Choose the shortest documentation path for your role:
 - [Operations guide](docs/OPERATIONS-GUIDE.md) — local deployment evidence, rollback, reference-only secrets, and audit boundaries.
 
 Upgrading from the checked-in v0.4.8/GPT-5.5-era baseline? Read the [GPT-5.6-SOL migration report](docs/GPT-5.6-SOL-MIGRATION-REPORT.md) for model/schema changes, provider support, compatibility shims, and the minimum deprecation window.
-The corrective 0.5.3 candidate and opt-in reporting boundaries are recorded in [release-candidate evidence](docs/RELEASE-CANDIDATE-0.5.3.md) and the [burn-in guide](docs/BURN-IN.md); neither document by itself represents publication.
+The corrective 0.5.4 candidate and opt-in reporting boundaries are recorded in [release-candidate evidence](docs/RELEASE-CANDIDATE-0.5.4.md) and the [burn-in guide](docs/BURN-IN.md); neither document by itself represents publication.
 
 ## What it creates
 

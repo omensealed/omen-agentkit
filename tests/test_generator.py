@@ -113,7 +113,7 @@ class GeneratorTests(unittest.TestCase):
             digest.update(content.encode())
             digest.update(b"\0")
         self.assertEqual(len(files), 49)
-        self.assertEqual(digest.hexdigest(), "0f1db3c3a2e352b28f2d8af59e60a2c1da5fee9281342bc641632983cd34fddb")
+        self.assertEqual(digest.hexdigest(), "502c86ff76dab3f197638801c7f5cce7445dd48537ceda5a5e891b2519627848")
 
     def make_config(self, root: Path, **overrides: object) -> ProjectConfig:
         values: dict[str, object] = {
