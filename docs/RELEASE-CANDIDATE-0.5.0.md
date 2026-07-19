@@ -2,7 +2,7 @@
 
 ## Candidate status
 
-This is a local unpublished candidate prepared from the protected working tree on 2026-07-19. It is evidence for review and burn-in, not a stable release. Before separate commit authorization, no commit, tag, push, release, or publication was performed, and the binding verifier returned `dirty_release_source` as expected. The human subsequently authorized one local candidate commit. That authorization does not include a tag, push, workflow dispatch, release, or publication; current cleanliness must be checked directly rather than inferred from this historical evidence.
+This was prepared as a local unpublished candidate from the protected working tree on 2026-07-19. Before separate commit authorization, no commit, tag, push, release, or publication was performed, and the binding verifier returned `dirty_release_source` as expected. The reviewed candidate was subsequently committed as `bf2927a9f238d6fcb0101a5abcec02afbb6115d8`, passed the complete trusted suite again from a clean tree, and was pushed to `main` without force. The human then explicitly authorized the gated tag and release sequence.
 
 The candidate version is aligned at `0.5.0` in `VERSION`, `pyproject.toml`, `agent_starter.__version__`, and `ProjectConfig.kit_version`. `CHANGELOG.md` has an empty Unreleased section and one dated 0.5.0 section.
 
@@ -23,10 +23,10 @@ Exact digests and sizes are recorded beside the built artifacts in `SHA256SUMS` 
 
 ## Burn-in and compatibility
 
-Burn-in intake is defined by [BURN-IN.md](BURN-IN.md) and the manual GitHub issue form. There is no telemetry. At candidate preparation time, no user-submitted burn-in report has been received in this local workspace; absence of reports is not evidence of correctness.
+Burn-in intake is defined by [BURN-IN.md](BURN-IN.md) and the manual GitHub issue form. There is no telemetry. Immediately before the stable-release decision, the repository's migration-burn-in issue query returned no reports, so there are no reported regressions to triage or resolve. Absence of reports is not treated as proof: the decision relies on the required synthetic journeys, existing-project fixtures, schema migration coverage, security/deployment gates, and exact artifact smoke, all of which passed.
 
 Compatibility shims remain required through 0.5.0 and the following minor stable release. Deprecated schema-v1 and saved advisor fields remain loadable under the [migration report](GPT-5.6-SOL-MIGRATION-REPORT.md) timeline.
 
-## Human-only next gates
+## Stable-release decision
 
-Before any stable release, a maintainer must resolve blocking user-submitted regressions, confirm the reviewed candidate commit and clean tree, and explicitly decide whether to create/push `v0.5.0`. Verification-only workflow dispatch should precede any separately approved publication attempt. The local commit authorization does not grant any of those later actions.
+The maintainer confirmed the clean reviewed candidate commit, found no submitted burn-in regression, and explicitly authorized creating and pushing `v0.5.0` followed by the manual release workflow. A `publish: false` verification run must succeed before a separately dispatched `publish: true` run. The exact-tag, checksum, attestation, draft-first, and final-job-only write boundaries remain binding.
