@@ -41,12 +41,16 @@ Ruff formatting is available to maintainers for inspection, but the inherited so
 mechanical rewrite. Keep formatter adoption as a separately reviewed compatibility slice; do not mix it into feature or
 security work, and never use an automatic formatter to overwrite protected user changes.
 
-The native Python 3.11/3.13/3.14 CI matrix runs the complete trusted check, so its package smoke builds an sdist and
-wheel on every supported matrix version. It installs them into separate temporary venvs without an index, verifies the
+The native Python 3.11/3.13/3.14 CI matrix runs every source, compatibility, generation, validation, and user-local
+install check. The minimum supported Python 3.11 job additionally runs package smoke because the no-install artifact
+builder requires the already-provided setuptools backend, which newer hosted Python images do not promise to bundle.
+Package smoke builds one sdist and wheel, installs them into separate temporary venvs without an index, verifies the
 `agent-starter` and dependency-free `agent-starter-gui --help` entry points, compares installed discovery against all
 source Python modules, imports every module except executable `agent_starter.__main__`, and performs representative
 generation/validation and deployment-local smoke. The sdist venv may expose only the runner's already-installed build
-backend through `--system-site-packages`; the AgentKit distribution itself must resolve inside that venv.
+backend through `--system-site-packages`; the AgentKit distribution itself must resolve inside that venv. Local
+`./scripts/check.sh` still runs the complete gate, including package smoke; `--skip-package-smoke` is the explicit CI
+matrix split and does not install or download a backend.
 
 User-local installation ownership is indicated by `.agent-starter-install-owner`. Install/reinstall may replace only a
 matching marked directory, or the narrowly recognized canonical pre-marker layout for compatibility. Uninstall removes

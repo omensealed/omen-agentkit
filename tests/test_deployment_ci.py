@@ -48,7 +48,8 @@ class DeploymentCIPolicyTests(unittest.TestCase):
         for action, pin in GITHUB_ACTION_PINS.items():
             self.assertRegex(pin.commit_sha, r"^[0-9a-f]{40}$")
             self.assertRegex(pin.version, r"^v[0-9]+\.[0-9]+\.[0-9]+$")
-            self.assertEqual(pin.reviewed_on, ACTION_PIN_REVIEW_DATE)
+            expected_review_date = "2026-07-19" if action == "actions/checkout" else ACTION_PIN_REVIEW_DATE
+            self.assertEqual(pin.reviewed_on, expected_review_date)
             self.assertEqual(pin.source_url, f"https://github.com/{action}/commit/{pin.commit_sha}")
             self.assertEqual(github_action_reference(action), f"{action}@{pin.commit_sha} # {pin.version}")
 
@@ -63,8 +64,8 @@ class DeploymentCIPolicyTests(unittest.TestCase):
         ))
         self.assertEqual(validate_github_action_references(valid), ())
         cases = {
-            "uses: actions/checkout@v6 # v6.0.0": "mutable_action_reference",
-            "uses: actions/checkout@1af3b93 # v6.0.0": "mutable_action_reference",
+            "uses: actions/checkout@v7 # v7.0.0": "mutable_action_reference",
+            "uses: actions/checkout@9c091bb # v7.0.0": "mutable_action_reference",
             f"uses: actions/checkout@{GITHUB_ACTION_PINS['actions/checkout'].commit_sha}": "missing_action_version_comment",
             f"uses: actions/checkout@{GITHUB_ACTION_PINS['actions/checkout'].commit_sha} # v5.0.0": "reviewed_action_pin_mismatch",
             "uses: example/unreviewed@" + "a" * 40 + " # v1.0.0": "unreviewed_action",
@@ -133,6 +134,9 @@ class DeploymentCIPolicyTests(unittest.TestCase):
         self.assertIn("id-token: write", workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("packages: write", workflow)
+        self.assertIn("run: ./scripts/check.sh --skip-package-smoke", workflow)
+        self.assertIn("if: matrix.python-version == '3.11'", workflow)
+        self.assertIn("run: ./scripts/package-smoke-test.sh", workflow)
         self.assertNotIn("release", workflow.lower().split("jobs:", 1)[0])
 
 

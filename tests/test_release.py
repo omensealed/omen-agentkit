@@ -110,7 +110,9 @@ class ReleaseConsistencyTests(unittest.TestCase):
         self.assertEqual(validate_github_action_references(workflow), ())
         self.assertIn("python-version: ['3.11', '3.13', '3.14']", compact)
         self.assertIn("runs-on: ubuntu-latest", workflow)
-        self.assertEqual(workflow.count("run: ./scripts/check.sh"), 1)
+        self.assertEqual(workflow.count("run: ./scripts/check.sh --skip-package-smoke"), 1)
+        self.assertIn("if: matrix.python-version == '3.11'", workflow)
+        self.assertEqual(workflow.count("run: ./scripts/package-smoke-test.sh"), 1)
         self.assertIn("provider-container-smoke:", workflow)
         provider_job = workflow.split("  provider-container-smoke:\n", 1)[1]
         self.assertNotIn("./scripts/check.sh", provider_job)

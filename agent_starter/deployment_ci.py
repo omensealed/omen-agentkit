@@ -62,15 +62,26 @@ class DeploymentCIPolicy:
     artifact_evidence: tuple[str, ...]
 
 
-def _pin(action: str, version: str, commit_sha: str) -> GitHubActionPin:
+def _pin(
+    action: str,
+    version: str,
+    commit_sha: str,
+    *,
+    reviewed_on: str = ACTION_PIN_REVIEW_DATE,
+) -> GitHubActionPin:
     return GitHubActionPin(
-        action, version, commit_sha, ACTION_PIN_REVIEW_DATE,
+        action, version, commit_sha, reviewed_on,
         f"https://github.com/{action}/commit/{commit_sha}",
     )
 
 
 GITHUB_ACTION_PINS: Mapping[str, GitHubActionPin] = MappingProxyType({
-    "actions/checkout": _pin("actions/checkout", "v6.0.0", "1af3b93b6815bc44a9784bd300feb67ff0d1eeb3"),
+    "actions/checkout": _pin(
+        "actions/checkout",
+        "v7.0.0",
+        "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+        reviewed_on="2026-07-19",
+    ),
     "actions/setup-python": _pin("actions/setup-python", "v6.3.0", "ece7cb06caefa5fff74198d8649806c4678c61a1"),
     "actions/setup-node": _pin("actions/setup-node", "v6.5.0", "249970729cb0ef3589644e2896645e5dc5ba9c38"),
     "actions/setup-go": _pin("actions/setup-go", "v6.4.0", "4a3601121dd01d1626a1e23e37211e3254c1c06c"),

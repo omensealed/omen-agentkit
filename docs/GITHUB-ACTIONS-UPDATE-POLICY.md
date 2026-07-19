@@ -34,6 +34,15 @@ updates monthly. Its pull requests are untrusted proposals: they cannot update t
 offline validator by themselves, and no auto-merge policy exists. Container image digest updates use the same human
 review boundary described in `docs/SUPPLY-CHAIN-POLICY.md`.
 
+## Reviewed action updates
+
+- `actions/checkout` v7.0.0, reviewed 2026-07-19: official tag and commit
+  `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0`. The major release retains the Node 24 runtime introduced in v5, moves
+  the action to ESM, updates dependencies, and refuses unsafe fork checkout for `pull_request_target` and
+  `workflow_run` unless explicitly opted in. AgentKit does not opt in. Existing self-hosted runners must already meet
+  checkout's Node 24 runner requirement; authenticated Git operations from container actions require runner v2.329.0
+  or later. No input, permission, persisted-credential, or trigger expansion was accepted.
+
 ## Offline and rollback behavior
 
 Tests validate only repository-owned metadata and generated text. They perform no GitHub API call, download, login, or

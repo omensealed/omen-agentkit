@@ -113,7 +113,7 @@ class GeneratorTests(unittest.TestCase):
             digest.update(content.encode())
             digest.update(b"\0")
         self.assertEqual(len(files), 49)
-        self.assertEqual(digest.hexdigest(), "502c86ff76dab3f197638801c7f5cce7445dd48537ceda5a5e891b2519627848")
+        self.assertEqual(digest.hexdigest(), "4ec6f13f1f9ad7a8f1ab7007c610bb456292d4d18563d24569ac169955073599")
 
     def make_config(self, root: Path, **overrides: object) -> ProjectConfig:
         values: dict[str, object] = {
@@ -251,8 +251,8 @@ class GeneratorTests(unittest.TestCase):
             original = workflow.read_text(encoding="utf-8")
             workflow.write_text(
                 original.replace(
-                    "actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0",
-                    "actions/checkout@v6 # v6.0.0",
+                    "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0",
+                    "actions/checkout@v7 # v7.0.0",
                 ),
                 encoding="utf-8",
             )
