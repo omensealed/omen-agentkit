@@ -19,7 +19,7 @@ classifiers = [
 [project.optional-dependencies]
 gui = ["pywebview>=5"]
 quality = [
-  "ruff>=0.15.20,<0.16",
+  "ruff>=0.15.20,<0.17",
   "mypy>=2.3,<2.4",
   "bandit>=1.9.4,<1.10",
   "coverage>=7.15.1,<7.16",
